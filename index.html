@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Lackluster Video</title>
+  </head>
+  <body>
+    <canvas id="viewport"></canvas>
+
+    <div id="ui">
+      <div id="hud" hidden>
+        <div id="hud-clock"><span id="clock-time">6:00 PM</span></div>
+        <div id="hud-tasks"></div>
+        <div id="hud-crosshair"></div>
+        <div id="hud-prompt" hidden></div>
+      </div>
+
+      <section id="screen-title" class="screen">
+        <p class="kicker">Be Kind, Rewind</p>
+        <h1>Lackluster<span>Video</span></h1>
+        <p class="tagline">One shift. Closing time. Don't get written up.</p>
+        <button id="btn-start" type="button">Clock In</button>
+        <ul class="controls">
+          <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move</li>
+          <li><kbd>Mouse</kbd> look</li>
+          <li><kbd>E</kbd> interact</li>
+          <li><kbd>Esc</kbd> release cursor</li>
+        </ul>
+      </section>
+
+      <section id="screen-report" class="screen" hidden>
+        <p class="kicker">End of Shift</p>
+        <h2>Performance Review</h2>
+        <div id="report-lines"></div>
+        <p id="report-verdict"></p>
+        <button id="btn-again" type="button">Clock In Again</button>
+      </section>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

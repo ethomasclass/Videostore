@@ -1,0 +1,255 @@
+:root {
+  --brand-blue: #1a3a8f;
+  --brand-yellow: #f5c518;
+  --ink: #0b0e16;
+  --paper: #efe9d8;
+  --good: #6fbf73;
+  --bad: #e0685f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+#viewport {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  /* The internal buffer is 320x240; keep the upscale hard-edged. */
+  image-rendering: pixelated;
+}
+
+#ui {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+#ui button,
+#ui a {
+  pointer-events: auto;
+}
+
+/* --- HUD --- */
+
+#hud-clock {
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  padding: 6px 12px;
+  background: rgba(11, 14, 22, 0.75);
+  border: 2px solid var(--brand-yellow);
+  color: var(--brand-yellow);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+#hud-tasks {
+  position: absolute;
+  top: 16px;
+  left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 40ch;
+}
+
+.task {
+  padding: 5px 10px;
+  background: rgba(11, 14, 22, 0.72);
+  border-left: 4px solid var(--brand-blue);
+  font-size: 13px;
+}
+
+.task.urgent {
+  border-left-color: var(--bad);
+  animation: nag 0.8s steps(2, end) infinite;
+}
+
+@keyframes nag {
+  50% {
+    background: rgba(224, 104, 95, 0.35);
+  }
+}
+
+#hud-crosshair {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 5px;
+  height: 5px;
+  margin: -2px 0 0 -2px;
+  background: rgba(239, 233, 216, 0.75);
+}
+
+#hud-prompt {
+  position: absolute;
+  top: 56%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 14px;
+  background: rgba(11, 14, 22, 0.8);
+  border: 1px solid rgba(239, 233, 216, 0.4);
+  font-size: 14px;
+  white-space: nowrap;
+}
+
+/* --- Full-screen states --- */
+
+.screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+  text-align: center;
+  background: radial-gradient(circle at 50% 35%, #1b2436 0%, #080a11 70%);
+}
+
+.screen[hidden] {
+  display: none;
+}
+
+.kicker {
+  margin: 0;
+  color: var(--brand-yellow);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.35em;
+  text-transform: uppercase;
+}
+
+#screen-title h1 {
+  margin: 0;
+  font-size: clamp(38px, 9vw, 92px);
+  font-weight: 800;
+  font-style: italic;
+  line-height: 0.92;
+  letter-spacing: -0.02em;
+  color: var(--paper);
+  text-shadow: 4px 4px 0 var(--brand-blue);
+}
+
+#screen-title h1 span {
+  display: block;
+  color: var(--brand-yellow);
+  font-size: 0.52em;
+  letter-spacing: 0.3em;
+  text-shadow: 3px 3px 0 var(--brand-blue);
+}
+
+.tagline {
+  margin: 0;
+  max-width: 34ch;
+  color: rgba(239, 233, 216, 0.75);
+  font-size: 15px;
+}
+
+#screen-report h2 {
+  margin: 0;
+  font-size: clamp(26px, 5vw, 44px);
+  font-weight: 800;
+  font-style: italic;
+}
+
+button {
+  margin-top: 8px;
+  padding: 12px 34px;
+  background: var(--brand-yellow);
+  border: none;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #fff;
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  justify-content: center;
+  margin: 18px 0 0;
+  padding: 0;
+  list-style: none;
+  color: rgba(239, 233, 216, 0.55);
+  font-size: 12px;
+}
+
+kbd {
+  display: inline-block;
+  min-width: 1.4em;
+  margin-right: 3px;
+  padding: 2px 5px;
+  background: rgba(239, 233, 216, 0.12);
+  border: 1px solid rgba(239, 233, 216, 0.3);
+  font: inherit;
+  font-size: 11px;
+}
+
+/* --- Review screen --- */
+
+#report-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: min(420px, 100%);
+  margin-top: 6px;
+}
+
+.report-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 8px 14px;
+  background: rgba(239, 233, 216, 0.06);
+  font-size: 14px;
+}
+
+.report-line[data-tone="1"] strong {
+  color: var(--good);
+}
+
+.report-line[data-tone="-1"] strong {
+  color: var(--bad);
+}
+
+#report-verdict {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 44ch;
+  margin: 8px 0 0;
+}
+
+#report-verdict strong {
+  color: var(--brand-yellow);
+  font-size: 20px;
+  font-style: italic;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+#report-verdict span {
+  color: rgba(239, 233, 216, 0.75);
+  font-size: 14px;
+}
