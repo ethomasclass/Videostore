@@ -80,6 +80,7 @@ export class Game {
   private speechLeft = 0
   /** Customer chatter can be switched off outright — it is flavour, not information. */
   private chatter = true
+  private lookHintShown = false
   private readonly byObject = new Map<THREE.Object3D, Interactable>()
 
   constructor(canvas: HTMLCanvasElement) {
@@ -106,6 +107,11 @@ export class Game {
     this.scene.add(this.customer.root)
 
     this.input = new Input(canvas, this.hud.touchUi)
+    // Sandboxed iframes refuse pointer lock, and the refusal is silent. Say once what works
+    // instead, rather than leaving the player waggling a mouse that does nothing.
+    this.input.onLockBlocked = () => {
+      if (this.phase === 'shift') this.showLookHint()
+    }
 
     // The monitor pose is fixed, so resolve its orientation once rather than every frame.
     // This dummy must be a camera: Object3D.lookAt aims an object's +Z at the target, while a
@@ -131,6 +137,13 @@ export class Game {
     canvas.addEventListener('click', () => {
       if (this.phase === 'shift') this.input.requestLock()
     })
+  }
+
+  /** Shown once a shift, and only where the mouse cannot capture. */
+  private showLookHint(): void {
+    if (this.lookHintShown) return
+    this.lookHintShown = true
+    this.hud.showToast('Drag to look around \u2014 or use the arrow keys', 'good')
   }
 
   private toggleChatter(): void {
@@ -175,6 +188,7 @@ export class Game {
     this.rewindPending = false
     this.rewindJobId = null
     this.kick = 0
+    this.lookHintShown = false
 
     // The shipment is on the board from clock-in and stays there: it never times out, it just
     // sits in the corner all night being the thing you have not got to yet.
@@ -185,6 +199,7 @@ export class Game {
     this.phase = 'shift'
     this.hud.showShift()
     this.input.requestLock()
+    if (this.input.pointerLockBlocked) this.showLookHint()
     // Browsers only allow audio to start from a gesture, and clocking in is one.
     this.radio.start()
   }

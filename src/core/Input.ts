@@ -6,6 +6,16 @@ export interface Movement {
 }
 
 /**
+ * A drag is bounded by the window; a locked mouse is not. Scaling the drag up means one sweep
+ * across the canvas turns you most of the way round, which is what makes an embedded build
+ * playable at all.
+ */
+const DRAG_GAIN = 1.7
+
+/** Arrow-key turn rate, in the same pixels-per-second the mouse deltas are measured in. */
+const ARROW_SPEED = 760
+
+/**
  * One surface over keyboard+mouse and touch. Callers ask for intent — movement, look, interact —
  * rather than for specific keys, so neither the player controller nor the game loop has to know
  * which input device is driving.
@@ -24,6 +34,18 @@ export class Input {
   private pitchDelta = 0
   private locked = false
   private dragging = false
+  /**
+   * Pointer lock is refused outright in a sandboxed iframe, which is exactly where this game
+   * gets embedded. Once we have been told no, stop asking — every retry throws and spams the
+   * console — and let the caller offer the player the fallbacks instead.
+   */
+  private lockBlocked = false
+  /**
+   * Fires the moment pointer lock is refused. The refusal can arrive a tick after the request
+   * — Chrome rejects the promise rather than throwing when the frame is merely un-permitted —
+   * so anything that wants to react to it has to be told, not poll once and give up.
+   */
+  onLockBlocked: (() => void) | null = null
 
   constructor(private readonly canvas: HTMLCanvasElement, touchUi?: TouchUiElements) {
     window.addEventListener('keydown', this.onKeyDown)
@@ -39,7 +61,17 @@ export class Input {
     }
   }
 
+  private static readonly CLAIMED = new Set([
+    'ArrowUp',
+    'ArrowDown',
+    'ArrowLeft',
+    'ArrowRight',
+    'Space',
+  ])
+
   private onKeyDown = (event: KeyboardEvent): void => {
+    // Arrows and space scroll the host page otherwise, which drags the whole game out of view.
+    if (Input.CLAIMED.has(event.code)) event.preventDefault()
     if (event.repeat) return
     this.pressed.add(event.code)
     this.queued.add(event.code)
@@ -54,24 +86,52 @@ export class Input {
   }
 
   private onMouseMove = (event: MouseEvent): void => {
-    // Pointer lock is unavailable in some embeddings, so an unlocked drag looks around instead.
-    if (!this.locked && !this.dragging) return
-    this.yawDelta -= event.movementX
-    this.pitchDelta -= event.movementY
+    // Locked, the mouse looks around on its own. Unlocked — embedded, usually — a held drag
+    // does the same job, scaled up, because a drag can only ever be one window wide.
+    if (this.locked) {
+      this.yawDelta -= event.movementX
+      this.pitchDelta -= event.movementY
+      return
+    }
+    if (!this.dragging) return
+    this.yawDelta -= event.movementX * DRAG_GAIN
+    this.pitchDelta -= event.movementY * DRAG_GAIN
   }
 
   private onMouseDown = (event: MouseEvent): void => {
-    if (event.button === 0) this.dragging = true
+    if (event.button !== 0) return
+    this.dragging = true
+    this.canvas.classList.add('dragging')
   }
 
   private onMouseUp = (): void => {
     this.dragging = false
+    this.canvas.classList.remove('dragging')
+  }
+
+  /** False once the browser has refused pointer lock, so the UI can say what to do instead. */
+  get pointerLockBlocked(): boolean {
+    return this.lockBlocked
   }
 
   /** Pointer lock is a desktop affordance; a touch device drives look by dragging instead. */
   requestLock(): void {
-    if (this.touch) return
-    void this.canvas.requestPointerLock()
+    if (this.touch || this.lockBlocked) return
+    // Chrome throws synchronously when the frame is sandboxed without allow-pointer-lock, and
+    // rejects asynchronously in other refusals, so both have to be caught.
+    try {
+      const request = this.canvas.requestPointerLock() as unknown
+      if (request instanceof Promise) request.catch(() => this.blockLock())
+    } catch {
+      this.blockLock()
+    }
+  }
+
+  private blockLock(): void {
+    if (this.lockBlocked) return
+    this.lockBlocked = true
+    this.canvas.classList.add('drag-to-look')
+    this.onLockBlocked?.()
   }
 
   releaseLock(): void {
@@ -95,11 +155,22 @@ export class Input {
     return this.pressed.has('ShiftLeft') || this.pressed.has('ShiftRight')
   }
 
-  /** Accumulated look motion since the last call, in pixels. */
-  takeLook(): { yaw: number; pitch: number } {
+  /**
+   * Accumulated look motion since the last call, in pixels. `dt` drives the arrow keys, which
+   * are the one way to look around that no embedding can take away; callers that only want to
+   * drain the mouse (a modal is open) pass nothing and get no key-driven turn.
+   */
+  takeLook(dt = 0): { yaw: number; pitch: number } {
     const look = { yaw: this.yawDelta, pitch: this.pitchDelta }
     this.yawDelta = 0
     this.pitchDelta = 0
+
+    if (dt > 0) {
+      const turn = (this.pressed.has('ArrowLeft') ? 1 : 0) - (this.pressed.has('ArrowRight') ? 1 : 0)
+      const tilt = (this.pressed.has('ArrowUp') ? 1 : 0) - (this.pressed.has('ArrowDown') ? 1 : 0)
+      look.yaw += turn * ARROW_SPEED * dt
+      look.pitch += tilt * ARROW_SPEED * dt
+    }
 
     if (this.touch) {
       const touchLook = this.touch.takeLook()

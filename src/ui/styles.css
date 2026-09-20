@@ -36,6 +36,16 @@ body {
   touch-action: none;
 }
 
+/* Where pointer lock is refused — an embedded build — looking around is a drag, so the
+   cursor has to say so. */
+#viewport.drag-to-look {
+  cursor: grab;
+}
+
+#viewport.drag-to-look.dragging {
+  cursor: grabbing;
+}
+
 #ui {
   position: fixed;
   inset: 0;

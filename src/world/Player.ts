@@ -50,7 +50,8 @@ export class Player {
   }
 
   update(dt: number, input: Input, colliders: readonly THREE.Box3[]): void {
-    const look = input.takeLook()
+    // dt goes in so the arrow keys turn at a rate rather than a rate-per-frame.
+    const look = input.takeLook(dt)
     this.yaw += look.yaw * LOOK_SENSITIVITY
     this.pitch = THREE.MathUtils.clamp(this.pitch + look.pitch * LOOK_SENSITIVITY, -PITCH_LIMIT, PITCH_LIMIT)
 
