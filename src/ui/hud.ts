@@ -65,6 +65,11 @@ export class Hud {
     this.fidelityButton.textContent = label
   }
 
+  /** Stops the touch look-surface stealing taps meant for an open panel. */
+  setModalOpen(open: boolean): void {
+    this.touchUi.root.classList.toggle('modal', open)
+  }
+
   showTitle(): void {
     this.titleScreen.hidden = false
     this.reportScreen.hidden = true
@@ -114,10 +119,12 @@ export class Hud {
       }),
     )
     this.casePanel.hidden = false
+    this.setModalOpen(true)
   }
 
   hideCase(): void {
     this.casePanel.hidden = true
+    this.setModalOpen(false)
   }
 
   /** True once if the player dismissed the case with the on-screen close button. */

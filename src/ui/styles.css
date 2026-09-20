@@ -150,6 +150,8 @@ body {
 #case-panel {
   position: absolute;
   inset: 0;
+  /* Above the touch look-surface, which covers the screen and would swallow every tap. */
+  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -238,6 +240,7 @@ body {
 #terminal {
   position: absolute;
   inset: 0;
+  z-index: 3;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -322,7 +325,9 @@ body {
 
 .term-key {
   margin: 0;
-  padding: 7px 12px;
+  /* Sized as a touch target first: on a phone these rows are the whole interface. */
+  min-height: 44px;
+  padding: 10px 16px;
   background: rgba(255, 176, 48, 0.12);
   border: 1px solid rgba(255, 176, 48, 0.55);
   border-radius: 0;
@@ -366,6 +371,12 @@ body {
   display: none;
 }
 
+#touch-ui {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
 /* The drag surface only listens once a shift is running, so it never eats title-screen taps. */
 #touch-surface {
   position: absolute;
@@ -376,6 +387,19 @@ body {
 
 #touch-ui.in-shift #touch-surface {
   pointer-events: auto;
+}
+
+/*
+ * With a panel open the surface must stop listening entirely. Stacking alone is not enough:
+ * a drag that starts on the panel and leaves it would still steer the camera behind it.
+ */
+#touch-ui.modal #touch-surface,
+#touch-ui.modal #btn-interact {
+  pointer-events: none;
+}
+
+#touch-ui.modal #btn-interact {
+  opacity: 0;
 }
 
 #touch-stick {

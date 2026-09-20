@@ -345,6 +345,37 @@ function buildSideSections(build: Build): void {
   buildBargainBin(build, 10.4, -1.6)
 }
 
+/** Beige base, dark keys, a shallow tilt. Merged, so a full key field costs one draw call. */
+function buildKeyboard(root: THREE.Group, x: number, y: number, z: number): void {
+  const group = new THREE.Group()
+
+  group.add(box(0.44, 0.022, 0.17, 0xc9c2ad))
+
+  const keys: THREE.BufferGeometry[] = []
+  const addKey = (kx: number, kz: number, width = 0.026) => {
+    const key = new THREE.BoxGeometry(width, 0.011, 0.022)
+    key.translate(kx, 0.016, kz)
+    keys.push(key)
+  }
+
+  for (let row = 0; row < 4; row += 1) {
+    const count = row === 0 ? 14 : 13
+    const indent = row * 0.008
+    for (let column = 0; column < count; column += 1) {
+      addKey(-0.195 + indent + column * 0.03, -0.055 + row * 0.028)
+    }
+  }
+  addKey(0, 0.062, 0.16)
+
+  const merged = mergeGeometries(keys, false)
+  for (const key of keys) key.dispose()
+  if (merged) group.add(new THREE.Mesh(merged, createPS1Material({ color: 0x6b6459 })))
+
+  group.position.set(x, y, z)
+  group.rotation.x = -0.07
+  root.add(group)
+}
+
 const BARGAIN_GENRES: readonly Genre[] = ['action', 'comedy', 'horror', 'scifi', 'family', 'drama']
 
 /** Previously-viewed: an open-topped bin of loose cases, tilted every which way. */
@@ -522,11 +553,7 @@ function buildCounter(build: Build): void {
     interactables.push({ object: zone, label, kind: 'station', station: kind })
   }
 
-  const register = box(0.5, 0.35, 0.4, 0x3a3a42)
-  place(root, register, -1.3, top + 0.2, frontZ)
-  const keyboard = box(0.46, 0.04, 0.2, 0x4a4a52)
-  place(root, keyboard, -1.3, top + 0.04, frontZ - 0.38)
-  station('Use the rental system', 'register', [2.2, 1.1, 1.5], [-1.3, top + 0.3, frontZ - 0.2])
+  station('Use the rental system', 'register', [2.4, 1.2, 1.6], [-1.3, top + 0.3, frontZ - 0.1])
 
   build.rewinder.root.position.set(1.6, top + 0.02, frontZ + 0.1)
   build.rewinder.root.rotation.y = Math.PI
@@ -545,20 +572,38 @@ function buildCounter(build: Build): void {
   colliders.push(place(root, crate, -4.3, 0.25, FEATURE_WALL_Z - 0.62))
   station('Open the shipment crate', 'restock', [1.3, 1.3, 1.1], [-4.3, 0.55, FEATURE_WALL_Z - 0.62])
 
-  // --- The terminal itself: a beige CRT facing the staff side of the counter ---
+  // --- The terminal: a whole beige computer, facing the staff side of the counter ---
   const monitorX = -1.3
-  const monitorZ = frontZ + 0.18
-  const monitorY = top + 0.21
+  const monitorZ = frontZ - 0.1
+  const monitorY = top + 0.23
+  const BEIGE = 0xc9c2ad
+  const BEIGE_DARK = 0xb0a894
 
-  place(root, box(0.3, 0.05, 0.28, 0xb8b19c), monitorX, top + 0.05, monitorZ)
-  place(root, box(0.44, 0.38, 0.4, 0xc9c2ad), monitorX, monitorY, monitorZ)
-  place(root, box(0.36, 0.28, 0.02, 0x1d1c18), monitorX, monitorY + 0.01, monitorZ + 0.2)
-  const screen = panel(0.3, 0.22, { color: 0x6b4a12, unlit: true })
-  screen.position.set(monitorX, monitorY + 0.01, monitorZ + 0.215)
+  // Tilt-and-swivel foot, then the tube, then the recessed screen in its dark surround.
+  place(root, box(0.3, 0.05, 0.26, BEIGE_DARK), monitorX, top + 0.05, monitorZ)
+  place(root, box(0.46, 0.4, 0.42, BEIGE), monitorX, monitorY, monitorZ)
+  place(root, box(0.38, 0.3, 0.02, 0x1d1c18), monitorX, monitorY + 0.02, monitorZ + 0.21)
+  const screen = panel(0.32, 0.24, { color: 0x6b4a12, unlit: true })
+  screen.position.set(monitorX, monitorY + 0.02, monitorZ + 0.225)
   root.add(screen)
+  // Vent slots and a power LED, which is most of what reads as "computer" at this size.
+  place(root, box(0.3, 0.012, 0.02, BEIGE_DARK), monitorX, monitorY + 0.19, monitorZ + 0.2)
+  place(root, unlitBox(0.02, 0.012, 0.01, 0x6fe07a), monitorX + 0.16, monitorY - 0.16, monitorZ + 0.215)
+  // The back is what the shop floor sees, so it gets the vent stack and a cable of its own.
+  for (let i = 0; i < 4; i += 1) {
+    place(root, box(0.3, 0.014, 0.02, BEIGE_DARK), monitorX, monitorY + 0.12 - i * 0.06, monitorZ - 0.21)
+  }
+  place(root, box(0.03, 0.22, 0.03, 0x2a2a30), monitorX - 0.1, monitorY - 0.22, monitorZ - 0.22)
 
-  build.monitorView.position.set(monitorX, monitorY + 0.06, monitorZ + 0.78)
-  build.monitorView.target.set(monitorX, monitorY + 0.01, monitorZ + 0.2)
+  buildKeyboard(root, monitorX, top + 0.02, monitorZ + 0.44)
+
+  // The box itself, sat on the counter beside the screen the way they always were.
+  place(root, box(0.46, 0.13, 0.4, BEIGE), monitorX - 1.05, top + 0.08, monitorZ + 0.05)
+  place(root, box(0.16, 0.02, 0.02, BEIGE_DARK), monitorX - 1.15, top + 0.08, monitorZ + 0.25)
+  place(root, unlitBox(0.018, 0.018, 0.01, 0xe0a33a), monitorX - 0.92, top + 0.08, monitorZ + 0.25)
+
+  build.monitorView.position.set(monitorX, monitorY + 0.05, monitorZ + 0.92)
+  build.monitorView.target.set(monitorX, monitorY + 0.01, monitorZ + 0.21)
 }
 
 /**
@@ -673,7 +718,14 @@ function buildProps(build: Build): void {
   // A cardboard standee for whatever is big this month, angled at the entrance.
   const standeeTitle = newReleases()[0] ?? CATALOG[0]
   if (standeeTitle) {
-    const standee = panel(1.1, 1.9, { map: boxArtTexture(standeeTitle), side: THREE.DoubleSide })
+    // Front art only, with a plain card back behind it. A double-sided plane shows the artwork
+    // mirrored from behind, which reads as a rendering fault rather than as cardboard.
+    const standee = new THREE.Group()
+    const art = panel(1.1, 1.9, { map: boxArtTexture(standeeTitle) })
+    art.position.z = 0.012
+    standee.add(art)
+    const backing = box(1.1, 1.9, 0.02, 0x8a7a5e)
+    standee.add(backing)
     standee.position.set(DOORS.entranceX + 2.6, 0.95, 6.6)
     standee.rotation.y = -0.6
     root.add(standee)

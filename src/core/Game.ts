@@ -75,7 +75,9 @@ export class Game {
     this.input = new Input(canvas, this.hud.touchUi)
 
     // The monitor pose is fixed, so resolve its orientation once rather than every frame.
-    const framing = new THREE.Object3D()
+    // This dummy must be a camera: Object3D.lookAt aims an object's +Z at the target, while a
+    // camera's -Z is its forward, so a plain Object3D here faces exactly backwards.
+    const framing = new THREE.PerspectiveCamera()
     framing.position.copy(this.store.monitorView.position)
     framing.lookAt(this.store.monitorView.target)
     this.monitorQuaternion.copy(framing.quaternion)
@@ -137,6 +139,7 @@ export class Game {
     this.phase = 'report'
     this.input.releaseLock()
     this.terminal.close()
+    this.hud.setModalOpen(false)
     this.radio.stop()
     const verdict = VERDICT_COPY[this.scorecard.verdict]
     this.hud.showReport(this.scorecard.report(), verdict.title, verdict.body)
@@ -219,6 +222,7 @@ export class Game {
    */
   private beginStation(station: StationKind): void {
     if (station === 'register') {
+      this.hud.setModalOpen(true)
       this.terminal.open(
         this.customer.isWaiting
           ? {
@@ -284,6 +288,7 @@ export class Game {
 
     if (this.terminal.consumeCompleted()) {
       this.terminal.close()
+      this.hud.setModalOpen(false)
       this.input.requestLock()
       if (this.customerJobId !== null) {
         this.jobs.completeById(this.customerJobId, this.scorecard)
@@ -298,6 +303,7 @@ export class Game {
 
     if (this.terminal.consumeClosed() || this.input.consumeCancel()) {
       this.terminal.close()
+      this.hud.setModalOpen(false)
       this.input.requestLock()
     }
   }
