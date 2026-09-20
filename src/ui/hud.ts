@@ -40,9 +40,11 @@ export class Hud {
   private readonly promptPrefix = isTouchDevice() ? '' : '[E] '
 
   private readonly soundButton = need('btn-sound')
+  private readonly fidelityButton = need('btn-fidelity')
 
   onStart: (() => void) | null = null
   onToggleSound: (() => void) | null = null
+  onCycleFidelity: (() => void) | null = null
 
   constructor() {
     need('btn-start').addEventListener('click', () => this.onStart?.())
@@ -51,11 +53,16 @@ export class Hud {
       this.caseWasDismissed = true
     })
     this.soundButton.addEventListener('click', () => this.onToggleSound?.())
+    this.fidelityButton.addEventListener('click', () => this.onCycleFidelity?.())
   }
 
   setSoundMuted(muted: boolean): void {
     this.soundButton.textContent = muted ? 'Music off' : 'Music on'
     this.soundButton.classList.toggle('muted', muted)
+  }
+
+  setFidelityLabel(label: string): void {
+    this.fidelityButton.textContent = label
   }
 
   showTitle(): void {

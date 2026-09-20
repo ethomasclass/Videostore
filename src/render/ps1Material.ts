@@ -22,6 +22,7 @@ const vertexShader = /* glsl */ `
   uniform vec3 uAmbient;
 
   varying vec2 vUvW;
+  varying vec2 vUvCorrect;
   varying float vW;
   varying vec3 vLight;
   varying float vFogDepth;
@@ -49,8 +50,10 @@ const vertexShader = /* glsl */ `
       vLight = uAmbient + uLightColor * wrapped * 0.9;
     #endif
 
-    // (1) cancel the hardware perspective divide
+    // (1) cancel the hardware perspective divide. The plain uv rides alongside so the fragment
+    // stage can blend back to correct mapping when the warp is switched off.
     vUvW = uv * clip.w;
+    vUvCorrect = uv;
     vW = clip.w;
 
     vFogDepth = -viewPos.z;
@@ -64,18 +67,20 @@ const fragmentShader = /* glsl */ `
   uniform vec3 uFogColor;
   uniform float uFogNear;
   uniform float uFogFar;
+  uniform float uAffine;
 
   #ifdef USE_PS1_MAP
     uniform sampler2D uMap;
   #endif
 
   varying vec2 vUvW;
+  varying vec2 vUvCorrect;
   varying float vW;
   varying vec3 vLight;
   varying float vFogDepth;
 
   void main() {
-    vec2 uv = vUvW / vW;
+    vec2 uv = mix(vUvCorrect, vUvW / vW, uAffine);
 
     vec3 albedo = uColor;
     float alpha = uOpacity;
@@ -107,6 +112,9 @@ const shared = {
   lightDir: new THREE.Vector3(0.25, 1, 0.4).normalize(),
   lightColor: new THREE.Color(0xfff4e2),
   ambient: new THREE.Color(0x7a8492),
+  /** Global scales for the era artifacts, driven by the fidelity setting. */
+  affine: 1,
+  jitter: 1,
 }
 
 const registry = new Set<THREE.ShaderMaterial>()
@@ -140,7 +148,8 @@ export function createPS1Material(options: PS1MaterialOptions = {}): THREE.Shade
       uOpacity: { value: opacity },
       uMap: { value: map ?? null },
       uResolution: { value: shared.resolution },
-      uJitter: { value: jitter },
+      uJitter: { value: jitter * shared.jitter },
+      uAffine: { value: shared.affine },
       uLightDir: { value: shared.lightDir },
       uLightColor: { value: shared.lightColor },
       uAmbient: { value: shared.ambient },
@@ -150,12 +159,28 @@ export function createPS1Material(options: PS1MaterialOptions = {}): THREE.Shade
     },
   })
 
+  material.userData.authoredJitter = jitter
   registry.add(material)
   return material
 }
 
 export function setPS1Resolution(width: number, height: number): void {
   shared.resolution.set(width, height)
+}
+
+/**
+ * Scales the two geometry-level artifacts across every material at once. Each is independent of
+ * the framebuffer size, so turning the resolution up does not on its own make anything crisper
+ * — a swimming texture stays swimming, just in more detail.
+ */
+export function setPS1Fidelity(options: { affine: number; jitter: number }): void {
+  shared.affine = options.affine
+  shared.jitter = options.jitter
+  for (const material of registry) {
+    const authored = (material.userData.authoredJitter as number | undefined) ?? 1
+    material.uniforms.uJitter!.value = authored * options.jitter
+    material.uniforms.uAffine!.value = options.affine
+  }
 }
 
 export function disposePS1Materials(): void {

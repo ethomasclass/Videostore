@@ -1,14 +1,34 @@
 import * as THREE from 'three'
-import { setPS1Resolution } from './ps1Material'
+import { setPS1Fidelity, setPS1Resolution } from './ps1Material'
 
 /**
  * Internal framebuffer. Everything renders here, then gets point-sampled up to the window.
  * Height is fixed so the pixels stay a constant size; width follows the window's aspect so a
  * phone in either orientation fills the screen without stretching the image.
  */
-const INTERNAL_HEIGHT = 240
 const MIN_INTERNAL_WIDTH = 200
 const MAX_INTERNAL_WIDTH = 560
+
+/**
+ * The look is five separable things, and only the buffer size controls crispness. `sharp` keeps
+ * every era artifact and just doubles the vertical resolution; `crisp` turns the lot off and
+ * renders straight to the canvas.
+ */
+export type Fidelity = 'ps1' | 'sharp' | 'crisp'
+
+export const FIDELITY_ORDER: readonly Fidelity[] = ['ps1', 'sharp', 'crisp']
+
+export const FIDELITY_LABEL: Record<Fidelity, string> = {
+  ps1: 'Look: PS1',
+  sharp: 'Look: Sharp',
+  crisp: 'Look: Crisp',
+}
+
+const FIDELITY_SETTINGS: Record<Fidelity, { height: number; affine: number; jitter: number; dither: number }> = {
+  ps1: { height: 240, affine: 1, jitter: 1, dither: 1 },
+  sharp: { height: 480, affine: 1, jitter: 1, dither: 1 },
+  crisp: { height: 0, affine: 0, jitter: 0, dither: 0 },
+}
 
 const postVertex = /* glsl */ `
   varying vec2 vUv;
@@ -43,8 +63,14 @@ const postFragment = /* glsl */ `
     return v / 16.0 - 0.5;
   }
 
+  uniform float uDither;
+
   void main() {
     vec3 c = texture2D(uScene, vUv).rgb;
+    if (uDither < 0.5) {
+      gl_FragColor = vec4(c, 1.0);
+      return;
+    }
     float d = bayer(vUv * uInternal) / 32.0;
     // 5 bits per channel
     gl_FragColor = vec4(floor((c + d) * 31.0 + 0.5) / 31.0, 1.0);
@@ -58,12 +84,14 @@ export class Renderer {
   private readonly postCamera: THREE.Camera
   private readonly postMaterial: THREE.ShaderMaterial
   private internalWidth = 320
+  private internalHeight = 240
+  private fidelity: Fidelity = 'ps1'
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' })
     this.renderer.setPixelRatio(1)
 
-    this.target = new THREE.WebGLRenderTarget(this.internalWidth, INTERNAL_HEIGHT, {
+    this.target = new THREE.WebGLRenderTarget(this.internalWidth, this.internalHeight, {
       minFilter: THREE.NearestFilter,
       magFilter: THREE.NearestFilter,
       depthBuffer: true,
@@ -77,7 +105,8 @@ export class Renderer {
       depthWrite: false,
       uniforms: {
         uScene: { value: this.target.texture },
-        uInternal: { value: new THREE.Vector2(this.internalWidth, INTERNAL_HEIGHT) },
+        uInternal: { value: new THREE.Vector2(this.internalWidth, 240) },
+        uDither: { value: 1 },
       },
     })
 
@@ -97,23 +126,52 @@ export class Renderer {
     const height = Math.max(canvas.clientHeight, 1)
     this.renderer.setSize(width, height, false)
 
-    const windowAspect = width / height
-    this.internalWidth = Math.round(
-      THREE.MathUtils.clamp(INTERNAL_HEIGHT * windowAspect, MIN_INTERNAL_WIDTH, MAX_INTERNAL_WIDTH),
-    )
+    const setting = FIDELITY_SETTINGS[this.fidelity]
+    const canvasAspect = width / height
 
-    this.target.setSize(this.internalWidth, INTERNAL_HEIGHT)
-    this.postMaterial.uniforms.uInternal?.value.set(this.internalWidth, INTERNAL_HEIGHT)
-    setPS1Resolution(this.internalWidth, INTERNAL_HEIGHT)
+    if (setting.height === 0) {
+      this.internalWidth = width
+      this.internalHeight = height
+    } else {
+      const scale = setting.height / 240
+      this.internalHeight = setting.height
+      // Width follows the aspect so a phone in either orientation fills the screen unstretched.
+      this.internalWidth = Math.round(
+        THREE.MathUtils.clamp(
+          setting.height * canvasAspect,
+          MIN_INTERNAL_WIDTH * scale,
+          MAX_INTERNAL_WIDTH * scale,
+        ),
+      )
+      this.target.setSize(this.internalWidth, this.internalHeight)
+      this.postMaterial.uniforms.uInternal?.value.set(this.internalWidth, this.internalHeight)
+    }
 
+    setPS1Resolution(this.internalWidth, this.internalHeight)
     return this.aspect
   }
 
+  setFidelity(fidelity: Fidelity): number {
+    this.fidelity = fidelity
+    const setting = FIDELITY_SETTINGS[fidelity]
+    setPS1Fidelity({ affine: setting.affine, jitter: setting.jitter })
+    this.postMaterial.uniforms.uDither!.value = setting.dither
+    return this.resize()
+  }
+
   get aspect(): number {
-    return this.internalWidth / INTERNAL_HEIGHT
+    return this.internalWidth / this.internalHeight
   }
 
   render(scene: THREE.Scene, camera: THREE.Camera): void {
+    // At native resolution there is nothing to upscale and no dither, so the post pass would
+    // be a pure copy — render straight to the canvas instead.
+    if (FIDELITY_SETTINGS[this.fidelity].height === 0) {
+      this.renderer.setRenderTarget(null)
+      this.renderer.render(scene, camera)
+      return
+    }
+
     this.renderer.setRenderTarget(this.target)
     this.renderer.clear()
     this.renderer.render(scene, camera)

@@ -123,6 +123,11 @@ export class Input {
     return this.consumeKey('KeyM')
   }
 
+  /** True once per press of V — cycling the visual fidelity. */
+  consumeFidelityToggle(): boolean {
+    return this.consumeKey('KeyV')
+  }
+
   private consumeKey(code: string): boolean {
     return this.queued.delete(code)
   }

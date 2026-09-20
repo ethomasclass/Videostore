@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { Renderer } from '../render/Renderer'
+import { Renderer, FIDELITY_LABEL, FIDELITY_ORDER, type Fidelity } from '../render/Renderer'
 import { FOG } from '../render/palette'
 import { buildStore, SPAWN, type BuiltStore, type Interactable } from '../world/Store'
 import type { Title } from '../data/catalog'
@@ -34,6 +34,7 @@ export class Game {
   private phase: Phase = 'title'
   private lastFrame = 0
   private reading = false
+  private fidelity: Fidelity = 'ps1'
 
   private readonly interactObjects: THREE.Object3D[]
   private readonly byObject = new Map<THREE.Object3D, Interactable>()
@@ -54,6 +55,8 @@ export class Game {
     this.raycaster.far = INTERACT_RANGE
     this.hud.onStart = () => this.startShift()
     this.hud.onToggleSound = () => this.hud.setSoundMuted(this.radio.toggleMute())
+    this.hud.onCycleFidelity = () => this.cycleFidelity()
+    this.hud.setFidelityLabel(FIDELITY_LABEL[this.fidelity])
     this.hud.showTitle()
 
     window.addEventListener('resize', () => this.onResize())
@@ -61,6 +64,15 @@ export class Game {
     canvas.addEventListener('click', () => {
       if (this.phase === 'shift') this.input.requestLock()
     })
+  }
+
+  private cycleFidelity(): void {
+    const next = FIDELITY_ORDER[(FIDELITY_ORDER.indexOf(this.fidelity) + 1) % FIDELITY_ORDER.length]
+    if (!next) return
+    this.fidelity = next
+    this.player.camera.aspect = this.renderer.setFidelity(next)
+    this.player.camera.updateProjectionMatrix()
+    this.hud.setFidelityLabel(FIDELITY_LABEL[next])
   }
 
   private onResize(): void {
@@ -121,6 +133,7 @@ export class Game {
       this.hud.setInteractEnabled(target !== null)
 
       if (this.input.consumeMuteToggle()) this.hud.setSoundMuted(this.radio.toggleMute())
+      if (this.input.consumeFidelityToggle()) this.cycleFidelity()
 
       if (this.input.consumeInteract() && target) {
         if (target.kind === 'station') this.jobs.complete(target.station, this.scorecard)

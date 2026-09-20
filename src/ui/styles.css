@@ -62,9 +62,9 @@ body {
   letter-spacing: 0.06em;
 }
 
-#btn-sound {
+#btn-sound,
+#btn-fidelity {
   position: absolute;
-  top: 58px;
   right: 20px;
   margin: 0;
   padding: 5px 10px;
@@ -76,7 +76,16 @@ body {
   letter-spacing: 0.08em;
 }
 
-#btn-sound:hover {
+#btn-sound {
+  top: 58px;
+}
+
+#btn-fidelity {
+  top: 88px;
+}
+
+#btn-sound:hover,
+#btn-fidelity:hover {
   background: var(--brand-yellow);
   color: var(--ink);
 }
