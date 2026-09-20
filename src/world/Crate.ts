@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { createPS1Material } from '../render/ps1Material'
 import { GENRE_COLOR } from '../render/palette'
-import { CATALOG, type Title } from '../data/catalog'
+import { CATALOG, type Genre, type Title } from '../data/catalog'
 
 /**
  * The shipment crate: a cardboard box of new stock that has to be out on the floor before
@@ -17,6 +17,8 @@ export const SHIPMENT_SIZE = 10
 const CARD = 0x9a7a52
 const CARD_DARK = 0x836540
 const BODY = { width: 0.8, height: 0.5, depth: 0.6 } as const
+/** Sleeves stand with their top third above the rim, which is how a packed box looks. */
+const STOCK_Y = 0.57
 
 const ease = (t: number): number => t * t * (3 - 2 * t)
 
@@ -33,6 +35,7 @@ export class Crate {
   /** The tape currently being lifted out, and how far through that lift it is. */
   private lifting: THREE.Mesh | null = null
   private liftTime = 0
+  private liftBase = STOCK_Y
 
   constructor() {
     const body = new THREE.Mesh(
@@ -68,22 +71,30 @@ export class Crate {
         new THREE.BoxGeometry(spec.w, 0.012, spec.d),
         createPS1Material({ color: CARD_DARK }),
       )
-      // Hinged along the edge, so the panel hangs off it rather than pivoting about its middle.
-      flap.position.z = (spec.axis === 'x' ? spec.sign : spec.sign) * (spec.d / 2)
+      // Hinged along the edge, with the panel reaching *inward* across the top of the box —
+      // that is the closed state, and it is what makes the open state read as the flap
+      // swinging up over the hinge and down the outside.
+      flap.position.z = -spec.sign * (spec.d / 2)
       hinge.add(flap)
       hinge.userData.sign = spec.sign
       this.flaps.push(hinge)
     }
 
     // The stock itself: sleeves standing on end, in genre colours so the box reads as full.
+    // Cycled through the genre colours rather than taken off the front of the catalogue,
+    // which handed out four reds in a row and made a packed box read as two objects.
+    const SPREAD: Genre[] = ['action', 'comedy', 'horror', 'scifi', 'family', 'drama']
     for (let i = 0; i < SHIPMENT_SIZE; i += 1) {
-      const genre = CATALOG[i % CATALOG.length]?.genre ?? 'action'
+      const genre = SPREAD[(i * 2 + Math.floor(i / 5)) % SPREAD.length] ?? 'action'
       const sleeve = new THREE.Mesh(
         new THREE.BoxGeometry(0.11, 0.2, 0.034),
         createPS1Material({ color: GENRE_COLOR[genre] }),
       )
-      sleeve.position.set(-0.22 + (i % 5) * 0.11, 0.32, i < 5 ? -0.1 : 0.12)
-      sleeve.rotation.y = (i % 3) * 0.06
+      // A packed box is never level: each sleeve sits a centimetre or two off its neighbour.
+      sleeve.position.set(-0.22 + (i % 5) * 0.11, STOCK_Y - (i % 3) * 0.018, i < 5 ? -0.11 : 0.13)
+      sleeve.rotation.y = (i % 3) * 0.06 - 0.04
+      sleeve.rotation.z = ((i % 4) - 1.5) * 0.03
+      sleeve.visible = false
       this.root.add(sleeve)
       this.stack.push(sleeve)
     }
@@ -106,9 +117,8 @@ export class Crate {
     this.lid = 0
     this.lidTarget = 0
     this.lifting = null
-    for (const sleeve of this.stack) {
-      sleeve.visible = true
-      sleeve.position.y = 0.32
+    for (const [index, sleeve] of this.stack.entries()) {
+      sleeve.position.y = STOCK_Y - (index % 3) * 0.018
     }
     this.applyLid()
   }
@@ -127,6 +137,7 @@ export class Crate {
     const sleeve = this.stack[this.left]
     if (sleeve) {
       this.lifting = sleeve
+      this.liftBase = sleeve.position.y
       this.liftTime = 0
     }
     return CATALOG[Math.floor(Math.random() * CATALOG.length)] ?? null
@@ -140,22 +151,31 @@ export class Crate {
     }
 
     if (this.lifting) {
+      // applyLid counts it as already gone, so keep it on screen until the lift finishes.
+      this.lifting.visible = true
       this.liftTime += dt
       const t = Math.min(this.liftTime / 0.55, 1)
-      this.lifting.position.y = 0.32 + ease(t) * 0.45
+      this.lifting.position.y = this.liftBase + ease(t) * 0.4
       if (t >= 1) {
         this.lifting.visible = false
-        this.lifting.position.y = 0.32
+        this.lifting.position.y = this.liftBase
         this.lifting = null
       }
     }
   }
 
   private applyLid(): void {
+    const open = ease(this.lid)
     for (const hinge of this.flaps) {
       const sign = (hinge.userData.sign as number) ?? 1
-      // Just past flat, so the flaps sag outward the way wet cardboard does.
-      hinge.rotation.x = -sign * ease(this.lid) * 1.75
+      // A bit past 180 degrees, so each flap lands just outside its own wall and sags.
+      hinge.rotation.x = sign * open * 3.3
+    }
+
+    // Shut, the stock is under the flaps and nobody can see it; open, it should be standing
+    // proud of the rim. Both, rather than sleeves poking through a closed lid.
+    for (const [index, sleeve] of this.stack.entries()) {
+      sleeve.visible = index < this.left && this.lid > 0.12
     }
   }
 }

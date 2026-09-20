@@ -47,6 +47,11 @@ interface Clip {
 const REST_RIGHT: Vec3 = [0.29, -0.29, -0.54]
 const REST_LEFT: Vec3 = [-0.31, -0.31, -0.58]
 
+/**
+ * Everything the hands actually do happens in a band between roughly -0.10 and -0.30 below
+ * the eye line. Lower than that and the business plays out under the bottom edge of the
+ * screen: the animation runs, nobody ever sees it, and the station reads as a keypress again.
+ */
 const CLIPS: Record<HandAction, Clip> = {
   /**
    * The whole business, not just the last beat of it: the sleeve comes up in the left hand,
@@ -63,23 +68,23 @@ const CLIPS: Record<HandAction, Clip> = {
     leftReleaseAt: 0.93,
     right: [
       { t: 0, pos: REST_RIGHT, rot: [0, -0.2, 0] },
-      { t: 0.2, pos: [0.22, -0.3, -0.58], rot: [-0.25, -0.15, 0] },
-      // Fingers on the sleeve, which the left hand is holding out in front.
-      { t: 0.36, pos: [-0.04, -0.29, -0.62], rot: [-0.3, -0.05, -0.15] },
-      // Draws the tape clear, off to the right.
-      { t: 0.55, pos: [0.2, -0.25, -0.58], rot: [-0.22, -0.12, 0.3] },
-      // And into the deck.
-      { t: 0.76, pos: [0.13, -0.28, -0.78], rot: [-0.48, -0.05, 0.05] },
-      { t: 0.88, pos: [0.22, -0.3, -0.6], rot: [-0.18, -0.1, 0] },
+      { t: 0.2, pos: [0.2, -0.2, -0.5], rot: [-0.2, -0.15, 0] },
+      // Fingers on the sleeve, which the left hand is holding up in front of you.
+      { t: 0.36, pos: [0.0, -0.16, -0.48], rot: [-0.25, -0.05, -0.18] },
+      // Draws the tape clear, off to the right and high enough to actually see it.
+      { t: 0.55, pos: [0.2, -0.12, -0.44], rot: [-0.18, -0.12, 0.38] },
+      // And down into the deck.
+      { t: 0.76, pos: [0.14, -0.26, -0.66], rot: [-0.45, -0.05, 0.05] },
+      { t: 0.88, pos: [0.22, -0.26, -0.55], rot: [-0.18, -0.12, 0] },
       { t: 1, pos: REST_RIGHT, rot: [0, -0.2, 0] },
     ],
     left: [
       { t: 0, pos: REST_LEFT, rot: [0, 0.2, 0] },
-      { t: 0.2, pos: [-0.17, -0.27, -0.62], rot: [-0.28, 0.18, 0] },
+      { t: 0.2, pos: [-0.16, -0.17, -0.5], rot: [-0.25, 0.18, 0] },
       // Holds it steady while the tape comes out, tipping it open a little.
-      { t: 0.42, pos: [-0.17, -0.27, -0.62], rot: [-0.34, 0.22, -0.12] },
-      { t: 0.6, pos: [-0.18, -0.28, -0.6], rot: [-0.3, 0.2, -0.1] },
-      { t: 0.85, pos: [-0.28, -0.34, -0.56], rot: [-0.05, 0.2, 0] },
+      { t: 0.42, pos: [-0.16, -0.17, -0.5], rot: [-0.32, 0.22, -0.14] },
+      { t: 0.6, pos: [-0.17, -0.19, -0.5], rot: [-0.28, 0.2, -0.1] },
+      { t: 0.85, pos: [-0.28, -0.3, -0.56], rot: [-0.05, 0.2, 0] },
       { t: 1, pos: REST_LEFT, rot: [0, 0.2, 0] },
     ],
   },
@@ -90,9 +95,25 @@ const CLIPS: Record<HandAction, Clip> = {
     releaseAt: 0.62,
     right: [
       { t: 0, pos: REST_RIGHT, rot: [0, -0.2, 0] },
-      { t: 0.3, pos: [0.24, -0.1, -0.6], rot: [-0.5, -0.15, 0.1] },
-      { t: 0.62, pos: [0.22, -0.04, -0.78], rot: [-0.7, -0.1, 0.05] },
-      { t: 0.8, pos: [0.26, -0.18, -0.6], rot: [-0.3, -0.15, 0] },
+      { t: 0.3, pos: [0.22, -0.1, -0.52], rot: [-0.45, -0.15, 0.1] },
+      { t: 0.62, pos: [0.2, -0.04, -0.72], rot: [-0.68, -0.1, 0.05] },
+      { t: 0.8, pos: [0.24, -0.16, -0.56], rot: [-0.3, -0.15, 0] },
+      { t: 1, pos: REST_RIGHT, rot: [0, -0.2, 0] },
+    ],
+  },
+  // Reach down into the open box and bring a sleeve up where you can see it.
+  stock: {
+    duration: 1.2,
+    holds: null,
+    takes: 'case',
+    takesAt: 0.45,
+    releaseAt: 0.95,
+    right: [
+      { t: 0, pos: REST_RIGHT, rot: [0, -0.2, 0] },
+      { t: 0.3, pos: [0.26, -0.42, -0.52], rot: [0.42, -0.2, 0] },
+      { t: 0.45, pos: [0.26, -0.46, -0.54], rot: [0.5, -0.2, 0] },
+      { t: 0.72, pos: [0.22, -0.16, -0.48], rot: [-0.05, -0.2, 0.1] },
+      { t: 0.86, pos: [0.24, -0.18, -0.5], rot: [-0.02, -0.2, 0] },
       { t: 1, pos: REST_RIGHT, rot: [0, -0.2, 0] },
     ],
   },
@@ -102,37 +123,25 @@ const CLIPS: Record<HandAction, Clip> = {
     holds: null,
     right: [
       { t: 0, pos: REST_RIGHT, rot: [0, -0.2, 0] },
-      { t: 0.2, pos: [0.22, -0.4, -0.62], rot: [-0.55, -0.1, 0] },
-      { t: 0.34, pos: [0.22, -0.34, -0.6], rot: [-0.4, -0.1, 0] },
-      { t: 0.5, pos: [0.18, -0.4, -0.64], rot: [-0.55, -0.05, 0] },
-      { t: 0.72, pos: [0.3, -0.3, -0.7], rot: [-0.3, -0.35, 0] },
+      { t: 0.2, pos: [0.22, -0.32, -0.58], rot: [-0.5, -0.1, 0] },
+      { t: 0.34, pos: [0.22, -0.26, -0.56], rot: [-0.35, -0.1, 0] },
+      { t: 0.5, pos: [0.18, -0.32, -0.6], rot: [-0.5, -0.05, 0] },
+      { t: 0.72, pos: [0.3, -0.22, -0.64], rot: [-0.28, -0.35, 0] },
       { t: 1, pos: REST_RIGHT, rot: [0, -0.2, 0] },
     ],
   },
   // Lean down into the bin and come back up with a tape.
   returns: {
     duration: 1.2,
-    holds: 'tape',
+    holds: null,
+    takes: 'tape',
+    takesAt: 0.4,
     releaseAt: 0.95,
     right: [
       { t: 0, pos: REST_RIGHT, rot: [0, -0.2, 0] },
-      { t: 0.35, pos: [0.24, -0.54, -0.5], rot: [0.4, -0.2, 0] },
-      { t: 0.6, pos: [0.24, -0.46, -0.54], rot: [0.1, -0.2, 0] },
-      { t: 1, pos: REST_RIGHT, rot: [0, -0.2, 0] },
-    ],
-  },
-  // Reach down into the open box and come up with a sleeve.
-  stock: {
-    duration: 1.15,
-    holds: null,
-    takes: 'case',
-    takesAt: 0.45,
-    releaseAt: 0.97,
-    right: [
-      { t: 0, pos: REST_RIGHT, rot: [0, -0.2, 0] },
-      { t: 0.3, pos: [0.26, -0.58, -0.56], rot: [0.5, -0.2, 0] },
-      { t: 0.45, pos: [0.26, -0.62, -0.58], rot: [0.6, -0.2, 0] },
-      { t: 0.7, pos: [0.24, -0.34, -0.6], rot: [0.05, -0.2, 0] },
+      { t: 0.35, pos: [0.24, -0.44, -0.48], rot: [0.38, -0.2, 0] },
+      { t: 0.62, pos: [0.24, -0.18, -0.5], rot: [0.0, -0.2, 0] },
+      { t: 0.85, pos: [0.26, -0.2, -0.52], rot: [-0.05, -0.2, 0] },
       { t: 1, pos: REST_RIGHT, rot: [0, -0.2, 0] },
     ],
   },
@@ -142,14 +151,14 @@ const CLIPS: Record<HandAction, Clip> = {
     holds: null,
     right: [
       { t: 0, pos: REST_RIGHT, rot: [0, -0.2, 0] },
-      { t: 0.4, pos: [0.3, -0.48, -0.66], rot: [0.2, -0.3, 0] },
-      { t: 0.65, pos: [0.44, -0.42, -0.58], rot: [0, -0.5, 0] },
+      { t: 0.4, pos: [0.28, -0.34, -0.6], rot: [0.18, -0.3, 0] },
+      { t: 0.65, pos: [0.44, -0.28, -0.5], rot: [0, -0.5, 0] },
       { t: 1, pos: REST_RIGHT, rot: [0, -0.2, 0] },
     ],
     left: [
       { t: 0, pos: REST_LEFT, rot: [0, 0.2, 0] },
-      { t: 0.4, pos: [-0.3, -0.5, -0.66], rot: [0.2, 0.3, 0] },
-      { t: 0.65, pos: [-0.44, -0.44, -0.58], rot: [0, 0.5, 0] },
+      { t: 0.4, pos: [-0.28, -0.36, -0.6], rot: [0.18, 0.3, 0] },
+      { t: 0.65, pos: [-0.44, -0.3, -0.5], rot: [0, 0.5, 0] },
       { t: 1, pos: REST_LEFT, rot: [0, 0.2, 0] },
     ],
   },
@@ -157,6 +166,73 @@ const CLIPS: Record<HandAction, Clip> = {
 
 const SKIN = 0xb98a62
 const SLEEVE = 0x22407d
+
+/**
+ * The two props, built rather than coloured. A plain blue block in a blue sleeve is a block
+ * you cannot see — which is why the case looked like nothing was happening. A rental clamshell
+ * is near-black with a cream spine label on it, and that reads instantly against an arm.
+ */
+function buildCaseProp(): THREE.Group {
+  const group = new THREE.Group()
+
+  const shell = new THREE.Mesh(
+    new THREE.BoxGeometry(0.145, 0.235, 0.036),
+    createPS1Material({ color: 0x17171d }),
+  )
+  group.add(shell)
+
+  // The house band down the spine edge, and the title sticker on the face.
+  const spine = new THREE.Mesh(
+    new THREE.BoxGeometry(0.02, 0.235, 0.038),
+    createPS1Material({ color: BRAND.blue }),
+  )
+  spine.position.x = -0.062
+  group.add(spine)
+
+  const label = new THREE.Mesh(
+    new THREE.BoxGeometry(0.1, 0.07, 0.04),
+    createPS1Material({ color: 0xe4dfcd }),
+  )
+  label.position.set(0.012, 0.055, 0)
+  group.add(label)
+
+  // Held with its face toward the player. Flat-on — which is how these were posed before —
+  // presents the 3cm edge to the camera, so the whole prop reads as a dark sliver and the
+  // animation looks like nothing is in your hands at all.
+  group.rotation.x = 0.22
+  group.visible = false
+  return group
+}
+
+function buildTapeProp(): THREE.Group {
+  const group = new THREE.Group()
+
+  group.add(
+    new THREE.Mesh(
+      new THREE.BoxGeometry(0.125, 0.21, 0.03),
+      createPS1Material({ color: 0x1b1b20 }),
+    ),
+  )
+
+  // A barcode sticker and the window over the spools: the two things that say "tape".
+  const sticker = new THREE.Mesh(
+    new THREE.BoxGeometry(0.1, 0.045, 0.034),
+    createPS1Material({ color: 0xd8d2c0 }),
+  )
+  sticker.position.y = -0.07
+  group.add(sticker)
+
+  const window = new THREE.Mesh(
+    new THREE.BoxGeometry(0.075, 0.03, 0.034),
+    createPS1Material({ color: 0x55585f }),
+  )
+  window.position.y = 0.055
+  group.add(window)
+
+  group.rotation.x = 0.18
+  group.visible = false
+  return group
+}
 
 function buildArm(mirror: number): { group: THREE.Group; anchor: THREE.Object3D } {
   const group = new THREE.Group()
@@ -221,10 +297,10 @@ export class Hands {
 
   private readonly right = buildArm(1)
   private readonly left = buildArm(-1)
-  private readonly tape: THREE.Mesh
-  private readonly case: THREE.Mesh
-  private readonly leftTape: THREE.Mesh
-  private readonly leftCase: THREE.Mesh
+  private readonly tape: THREE.Group
+  private readonly case: THREE.Group
+  private readonly leftTape: THREE.Group
+  private readonly leftCase: THREE.Group
 
   private clip: Clip | null = null
   private elapsed = 0
@@ -233,29 +309,14 @@ export class Hands {
   constructor() {
     this.root.add(this.right.group, this.left.group)
 
-    // A bare tape, and a sleeve with the house colours on it.
-    this.tape = new THREE.Mesh(
-      new THREE.BoxGeometry(0.1, 0.19, 0.026),
-      createPS1Material({ color: 0x1b1b20 }),
-    )
-    this.tape.rotation.x = Math.PI / 2
-    this.tape.visible = false
-    this.right.anchor.add(this.tape)
+    // One pair per hand, so both can hold something at once — cheaper than reparenting a
+    // single prop mid-clip and it lets the tape come out of a sleeve the other hand is holding.
+    this.tape = buildTapeProp()
+    this.case = buildCaseProp()
+    this.right.anchor.add(this.tape, this.case)
 
-    this.case = new THREE.Mesh(
-      new THREE.BoxGeometry(0.12, 0.2, 0.032),
-      createPS1Material({ color: BRAND.blue }),
-    )
-    this.case.rotation.x = Math.PI / 2
-    this.case.visible = false
-    this.right.anchor.add(this.case)
-
-    // The same two props again for the other hand. Cheaper than reparenting a single prop
-    // mid-clip, and it means both hands can hold something at once.
-    this.leftTape = this.tape.clone()
-    this.leftTape.material = createPS1Material({ color: 0x1b1b20 })
-    this.leftCase = this.case.clone()
-    this.leftCase.material = createPS1Material({ color: BRAND.blue })
+    this.leftTape = buildTapeProp()
+    this.leftCase = buildCaseProp()
     this.left.anchor.add(this.leftTape, this.leftCase)
 
     this.applyPose(this.right.group, { pos: REST_RIGHT, rot: [0, -0.2, 0] })
@@ -273,7 +334,7 @@ export class Hands {
 
   /** What is in each hand, for the dev probe: scripted tests cannot see the screen corners. */
   get held(): string {
-    const name = (tape: THREE.Mesh, sleeve: THREE.Mesh): string =>
+    const name = (tape: THREE.Object3D, sleeve: THREE.Object3D): string =>
       tape.visible ? 'tape' : sleeve.visible ? 'case' : '-'
     return `${name(this.leftTape, this.leftCase)}/${name(this.tape, this.case)}`
   }
