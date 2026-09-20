@@ -21,6 +21,11 @@ export class Player {
   private pitch = 0
   private readonly velocity = new THREE.Vector3()
   private bobPhase = 0
+  frozen = false
+
+  get isMoving(): boolean {
+    return this.velocity.lengthSq() > 0.05
+  }
 
   constructor(aspect: number) {
     // A narrow-ish FOV keeps the affine warp from tearing at the screen edges. The far plane
@@ -34,7 +39,9 @@ export class Player {
     this.yaw += look.yaw * LOOK_SENSITIVITY
     this.pitch = THREE.MathUtils.clamp(this.pitch + look.pitch * LOOK_SENSITIVITY, -PITCH_LIMIT, PITCH_LIMIT)
 
-    const { forward, strafe } = input.movement
+    // Frozen while an action plays out: you can still look around at what you are doing,
+    // but you cannot walk off mid-task.
+    const { forward, strafe } = this.frozen ? { forward: 0, strafe: 0 } : input.movement
 
     const wish = new THREE.Vector3(
       Math.sin(this.yaw) * -forward + Math.cos(this.yaw) * strafe,

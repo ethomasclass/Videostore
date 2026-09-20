@@ -18,10 +18,13 @@ export type Fidelity = 'ps1' | 'sharp' | 'crisp'
 
 export const FIDELITY_ORDER: readonly Fidelity[] = ['ps1', 'sharp', 'crisp']
 
+/** Sharp: era artifacts intact, titles legible. The look the project settled on. */
+export const DEFAULT_FIDELITY: Fidelity = 'sharp'
+
 export const FIDELITY_LABEL: Record<Fidelity, string> = {
-  ps1: 'Look: PS1',
-  sharp: 'Look: Sharp',
-  crisp: 'Look: Crisp',
+  ps1: 'Look: PS1 (V)',
+  sharp: 'Look: Sharp (V)',
+  crisp: 'Look: Crisp (V)',
 }
 
 const FIDELITY_SETTINGS: Record<Fidelity, { height: number; affine: number; jitter: number; dither: number }> = {
@@ -83,9 +86,9 @@ export class Renderer {
   private readonly postScene: THREE.Scene
   private readonly postCamera: THREE.Camera
   private readonly postMaterial: THREE.ShaderMaterial
-  private internalWidth = 320
-  private internalHeight = 240
-  private fidelity: Fidelity = 'ps1'
+  private internalWidth = 640
+  private internalHeight = 480
+  private fidelity: Fidelity = DEFAULT_FIDELITY
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' })

@@ -39,6 +39,20 @@ export function unlitBox(width: number, height: number, depth: number, color: nu
   )
 }
 
+/**
+ * An invisible volume to aim at. Fully transparent so the shader discards every fragment, but
+ * still raycastable — which `visible = false` would not reliably be. Stations need these
+ * because the props themselves (a till, a deck) are far too small to hit with a crosshair from
+ * anywhere a person would actually stand.
+ */
+export function hitbox(width: number, height: number, depth: number): THREE.Mesh {
+  const mesh = box(width, height, depth, 0xffffff)
+  const material = mesh.material as THREE.ShaderMaterial
+  material.uniforms.uOpacity!.value = 0
+  material.transparent = true
+  return mesh
+}
+
 export function panel(width: number, height: number, options: PS1MaterialOptions): THREE.Mesh {
   return new THREE.Mesh(new THREE.PlaneGeometry(width, height), createPS1Material(options))
 }

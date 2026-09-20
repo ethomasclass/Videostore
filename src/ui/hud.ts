@@ -57,7 +57,7 @@ export class Hud {
   }
 
   setSoundMuted(muted: boolean): void {
-    this.soundButton.textContent = muted ? 'Music off' : 'Music on'
+    this.soundButton.textContent = muted ? 'Music off (M)' : 'Music on (M)'
     this.soundButton.classList.toggle('muted', muted)
   }
 

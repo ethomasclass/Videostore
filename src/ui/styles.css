@@ -229,6 +229,128 @@ body {
   background: var(--ink);
 }
 
+/* --- Rental system terminal --- */
+
+#terminal {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(4, 6, 10, 0.82);
+  pointer-events: auto;
+}
+
+#terminal[hidden] {
+  display: none;
+}
+
+.term-shell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: min(560px, 100%);
+  max-height: 100%;
+  padding: 18px 20px 20px;
+  border: 2px solid #3d2e12;
+  border-radius: 6px;
+  /* Phosphor on a dead-black tube, with the scanlines the room's fluorescents never hid. */
+  background:
+    repeating-linear-gradient(rgba(255, 176, 48, 0.045) 0 1px, transparent 1px 3px),
+    #0a0803;
+  color: #ffb030;
+  font-family: "Courier New", Courier, monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  box-shadow: inset 0 0 60px rgba(255, 140, 20, 0.12);
+}
+
+.term-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+  /* Clears the close button pinned in the corner. */
+  padding-right: 58px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 176, 48, 0.35);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+
+#terminal-status {
+  color: #ffd98a;
+}
+
+#terminal-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 132px;
+  overflow-x: auto;
+}
+
+.term-line {
+  white-space: pre;
+}
+
+.term-dim {
+  color: rgba(255, 176, 48, 0.55);
+}
+
+.term-good {
+  color: #9ee06a;
+}
+
+#terminal-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 176, 48, 0.35);
+}
+
+.term-key {
+  margin: 0;
+  padding: 7px 12px;
+  background: rgba(255, 176, 48, 0.12);
+  border: 1px solid rgba(255, 176, 48, 0.55);
+  border-radius: 0;
+  color: #ffb030;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  cursor: pointer;
+}
+
+.term-key:hover {
+  background: #ffb030;
+  color: #0a0803;
+}
+
+#terminal-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  margin: 0;
+  padding: 2px 8px;
+  background: transparent;
+  border: 1px solid rgba(255, 176, 48, 0.4);
+  color: rgba(255, 176, 48, 0.7);
+  font-family: inherit;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+#terminal-close:hover {
+  background: rgba(255, 176, 48, 0.2);
+  color: #ffd98a;
+}
+
 /* --- Touch controls --- */
 
 #touch-ui[hidden] {

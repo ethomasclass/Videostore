@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { Renderer, FIDELITY_LABEL, FIDELITY_ORDER, type Fidelity } from '../render/Renderer'
+import { Renderer, DEFAULT_FIDELITY, FIDELITY_LABEL, FIDELITY_ORDER, type Fidelity } from '../render/Renderer'
 import { FOG } from '../render/palette'
 import { buildStore, SPAWN, type BuiltStore, type Interactable } from '../world/Store'
 import type { Title } from '../data/catalog'
@@ -9,7 +9,11 @@ import { ShiftClock } from './Clock'
 import { JobBoard } from '../sim/Tasks'
 import { Scorecard, VERDICT_COPY } from '../sim/Scorecard'
 import { Hud } from '../ui/hud'
+import { Terminal } from '../ui/terminal'
 import { StoreRadio } from '../audio/StoreRadio'
+import { Hands } from '../world/Hands'
+import { Customer } from '../sim/Customer'
+import type { StationKind } from '../world/Store'
 
 type Phase = 'title' | 'shift' | 'report'
 
@@ -29,12 +33,18 @@ export class Game {
   private readonly scorecard = new Scorecard()
   private readonly hud = new Hud()
   private readonly radio = new StoreRadio()
+  private readonly terminal = new Terminal()
+  private readonly hands = new Hands()
+  private readonly customer = new Customer()
   private readonly raycaster = new THREE.Raycaster()
 
   private phase: Phase = 'title'
   private lastFrame = 0
   private reading = false
-  private fidelity: Fidelity = 'ps1'
+  private fidelity: Fidelity = DEFAULT_FIDELITY
+  /** An action in progress: the player is pinned in place until its animation finishes. */
+  private busy: { station: StationKind; timeLeft: number } | null = null
+  private customerJobId: number | null = null
 
   private readonly interactObjects: THREE.Object3D[]
   private readonly byObject = new Map<THREE.Object3D, Interactable>()
@@ -50,6 +60,11 @@ export class Game {
     for (const entry of this.store.interactables) this.byObject.set(entry.object, entry)
 
     this.player = new Player(this.renderer.aspect)
+    // The camera joins the scene graph so the arms, parented to it, are actually traversed.
+    this.scene.add(this.player.camera)
+    this.player.camera.add(this.hands.root)
+    this.scene.add(this.customer.root)
+
     this.input = new Input(canvas, this.hud.touchUi)
 
     this.raycaster.far = INTERACT_RANGE
@@ -90,6 +105,10 @@ export class Game {
     this.jobs.reset()
     this.scorecard.reset()
     this.player.position.set(SPAWN.x, this.player.position.y, SPAWN.z)
+    this.player.frozen = false
+    this.busy = null
+    this.customerJobId = null
+    this.customer.reset()
     this.phase = 'shift'
     this.hud.showShift()
     this.input.requestLock()
@@ -100,6 +119,7 @@ export class Game {
   private endShift(): void {
     this.phase = 'report'
     this.input.releaseLock()
+    this.terminal.close()
     this.radio.stop()
     const verdict = VERDICT_COPY[this.scorecard.verdict]
     this.hud.showReport(this.scorecard.report(), verdict.title, verdict.body)
@@ -123,25 +143,107 @@ export class Game {
     this.hud.setClock(this.clock.format())
     this.hud.setJobs(this.jobs.jobs)
 
-    if (this.reading) {
+    this.customer.update(dt)
+    this.syncCustomerJob()
+
+    if (this.terminal.isOpen) {
+      this.updateTerminal()
+    } else if (this.reading) {
       this.updateReading()
     } else {
       this.player.update(dt, this.input, this.store.colliders)
 
-      const target = this.findTarget()
-      this.hud.setPrompt(target ? target.label : null)
-      this.hud.setInteractEnabled(target !== null)
+      if (this.busy) {
+        this.busy.timeLeft -= dt
+        if (this.busy.timeLeft <= 0) this.finishAction()
+        this.hud.setPrompt(null)
+        this.hud.setInteractEnabled(false)
+      } else {
+        const target = this.findTarget()
+        this.hud.setPrompt(target ? target.label : null)
+        this.hud.setInteractEnabled(target !== null)
 
-      if (this.input.consumeMuteToggle()) this.hud.setSoundMuted(this.radio.toggleMute())
-      if (this.input.consumeFidelityToggle()) this.cycleFidelity()
+        if (this.input.consumeMuteToggle()) this.hud.setSoundMuted(this.radio.toggleMute())
+        if (this.input.consumeFidelityToggle()) this.cycleFidelity()
 
-      if (this.input.consumeInteract() && target) {
-        if (target.kind === 'station') this.jobs.complete(target.station, this.scorecard)
-        else this.openCase(target.title)
+        if (this.input.consumeInteract() && target) {
+          if (target.kind === 'station') this.beginStation(target.station)
+          else this.openCase(target.title)
+        }
       }
     }
 
+    this.hands.update(dt, this.player.isMoving)
+
     if (this.clock.isOver) this.endShift()
+  }
+
+  /**
+   * The register is the one station that opens the rental system instead of resolving on the
+   * spot — the sale is the terminal's to complete, and the animation plays after it.
+   */
+  private beginStation(station: StationKind): void {
+    if (station === 'register') {
+      this.terminal.open(
+        this.customer.isWaiting
+          ? {
+              name: this.customer.name,
+              memberNumber: this.customer.memberNumber,
+              basket: this.customer.basket,
+            }
+          : null,
+      )
+      this.input.releaseLock()
+      return
+    }
+
+    this.busy = { station, timeLeft: this.hands.play(station) }
+    this.player.frozen = true
+  }
+
+  private finishAction(): void {
+    const station = this.busy?.station
+    this.busy = null
+    this.player.frozen = false
+    // A register action was already settled by the terminal; the rest resolve on completion.
+    if (station && station !== 'register') this.jobs.complete(station, this.scorecard)
+  }
+
+  private updateTerminal(): void {
+    this.input.takeLook()
+
+    if (this.terminal.consumeCompleted()) {
+      this.terminal.close()
+      this.input.requestLock()
+      if (this.customerJobId !== null) {
+        this.jobs.completeById(this.customerJobId, this.scorecard)
+        this.customerJobId = null
+      }
+      this.customer.serve()
+      this.busy = { station: 'register', timeLeft: this.hands.play('register') }
+      this.player.frozen = true
+      return
+    }
+
+    if (this.terminal.consumeClosed() || this.input.consumeCancel()) {
+      this.terminal.close()
+      this.input.requestLock()
+    }
+  }
+
+  /** Keeps the board and the person at the counter describing the same thing. */
+  private syncCustomerJob(): void {
+    if (this.customer.isWaiting && this.customerJobId === null) {
+      const first = this.customer.name.split(' ')[0] ?? 'A customer'
+      this.customerJobId = this.jobs.addJob('register', `${first} is waiting at the register`, 60)
+    }
+
+    // The job left the board without the terminal closing it, so it timed out — the walkout is
+    // already counted, and the customer should stop standing there.
+    if (this.customerJobId !== null && !this.jobs.hasJob(this.customerJobId)) {
+      this.customerJobId = null
+      this.customer.serve()
+    }
   }
 
   private openCase(title: Title): void {

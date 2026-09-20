@@ -64,16 +64,37 @@ export class JobBoard {
     }
   }
 
+  /** Work raised by something in the world rather than by the spawner — a customer, say. */
+  addJob(kind: StationKind, label: string, patience: number): number {
+    const id = this.nextId++
+    this.jobs.push({ id, kind, label, timeLeft: patience })
+    return id
+  }
+
+  hasJob(id: number): boolean {
+    return this.jobs.some((job) => job.id === id)
+  }
+
+  completeById(id: number, scorecard: Scorecard): boolean {
+    const index = this.jobs.findIndex((job) => job.id === id)
+    if (index < 0) return false
+    const [job] = this.jobs.splice(index, 1)
+    if (job) this.credit(job.kind, scorecard)
+    return true
+  }
+
   private spawn(): void {
-    const kinds: StationKind[] = ['register', 'rewind', 'shelf', 'returns', 'restock']
-    const weights = [4, 3, 3, 1, 1]
+    // No 'register' here: a customer at the counter raises that job, so spawning it at random
+    // would put a queue on the board with nobody standing in it.
+    const kinds: StationKind[] = ['rewind', 'shelf', 'returns', 'restock']
+    const weights = [3, 3, 1, 1]
     const total = weights.reduce((sum, weight) => sum + weight, 0)
     let roll = Math.random() * total
-    let kind: StationKind = 'register'
+    let kind: StationKind = 'rewind'
     for (let i = 0; i < kinds.length; i += 1) {
       roll -= weights[i] ?? 0
       if (roll <= 0) {
-        kind = kinds[i] ?? 'register'
+        kind = kinds[i] ?? 'rewind'
         break
       }
     }
@@ -106,6 +127,11 @@ export class JobBoard {
     if (!best || bestIndex < 0) return null
 
     this.jobs.splice(bestIndex, 1)
+    this.credit(kind, scorecard)
+    return best
+  }
+
+  private credit(kind: StationKind, scorecard: Scorecard): void {
     switch (kind) {
       case 'register':
         scorecard.customersServed += 1
@@ -120,6 +146,5 @@ export class JobBoard {
       case 'restock':
         break
     }
-    return best
   }
 }

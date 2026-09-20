@@ -6,7 +6,7 @@ import { lacklusterLogoTexture } from '../render/logoTexture'
 import { posterTexture, type PosterId } from '../render/posterTexture'
 import { BRAND, GENRE_COLOR, ROOM } from '../render/palette'
 import { CATALOG, newReleases, type Genre, type Title } from '../data/catalog'
-import { box, unlitBox, panel, place, DOORS, FRONT_SOLID_HALF, STORE, VHS } from './buildKit'
+import { box, unlitBox, hitbox, panel, place, DOORS, FRONT_SOLID_HALF, STORE, VHS } from './buildKit'
 import { buildParkingLot, buildStorefront } from './exterior'
 
 export { STORE } from './buildKit'
@@ -235,14 +235,10 @@ function buildRun(build: Build, options: RunOptions): void {
   place(root, sign, x, height + 0.22, centerZ)
 
   if (options.label && options.station) {
-    // Fully transparent, so the shader discards every fragment — but still raycastable,
-    // which `visible = false` would not reliably be.
-    const hitbox = box(depth + 0.4, height, length, 0xffffff)
-    ;(hitbox.material as THREE.ShaderMaterial).uniforms.uOpacity!.value = 0
-    ;(hitbox.material as THREE.ShaderMaterial).transparent = true
-    hitbox.position.set(x, height / 2, centerZ)
-    root.add(hitbox)
-    interactables.push({ object: hitbox, label: options.label, kind: 'station', station: options.station })
+    const zone = hitbox(depth + 0.4, height, length)
+    zone.position.set(x, height / 2, centerZ)
+    root.add(zone)
+    interactables.push({ object: zone, label: options.label, kind: 'station', station: options.station })
   }
 }
 
@@ -478,21 +474,38 @@ function buildCounter(build: Build): void {
   }
 
   // --- Stations, all within a step of each other inside the U ---
+  // Each station gets a generous aim volume over its prop. Sized so that standing anywhere
+  // behind the counter and glancing down lands on the right one.
+  const station = (
+    label: string,
+    kind: StationKind,
+    size: readonly [number, number, number],
+    at: readonly [number, number, number],
+  ): void => {
+    const zone = hitbox(size[0], size[1], size[2])
+    zone.position.set(at[0], at[1], at[2])
+    root.add(zone)
+    interactables.push({ object: zone, label, kind: 'station', station: kind })
+  }
+
   const register = box(0.5, 0.35, 0.4, 0x3a3a42)
   place(root, register, -1.3, top + 0.2, frontZ)
-  interactables.push({ object: register, label: 'Ring up a customer', kind: 'station', station: 'register' })
+  const keyboard = box(0.46, 0.04, 0.2, 0x4a4a52)
+  place(root, keyboard, -1.3, top + 0.04, frontZ - 0.38)
+  station('Use the rental system', 'register', [2.2, 1.1, 1.5], [-1.3, top + 0.3, frontZ - 0.2])
 
   const rewindDeck = box(0.6, 0.22, 0.45, 0x26262c)
-  place(root, rewindDeck, 1.4, top + 0.13, frontZ)
-  interactables.push({ object: rewindDeck, label: 'Rewind a tape', kind: 'station', station: 'rewind' })
+  place(root, rewindDeck, 1.6, top + 0.13, frontZ)
+  place(root, unlitBox(0.1, 0.03, 0.02, 0x6fe07a), 1.82, top + 0.16, frontZ - 0.24)
+  station('Rewind a tape', 'rewind', [1.5, 1.1, 1.5], [1.6, top + 0.3, frontZ - 0.2])
 
   const returnBin = box(0.9, 0.7, 0.7, BRAND.blueDark)
   colliders.push(place(root, returnBin, -halfWidth - 0.9, 0.35, frontZ - 0.2))
-  interactables.push({ object: returnBin, label: 'Check the return bin', kind: 'station', station: 'returns' })
+  station('Check the return bin', 'returns', [1.4, 1.5, 1.2], [-halfWidth - 0.9, 0.7, frontZ - 0.2])
 
   const crate = box(0.8, 0.5, 0.6, 0x7d6a4f)
   colliders.push(place(root, crate, -2.2, 0.25, backZ + 0.55))
-  interactables.push({ object: crate, label: 'Open the shipment crate', kind: 'station', station: 'restock' })
+  station('Open the shipment crate', 'restock', [1.3, 1.3, 1.1], [-2.2, 0.55, backZ + 0.55])
 }
 
 /**
