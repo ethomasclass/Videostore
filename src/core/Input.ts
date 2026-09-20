@@ -18,12 +18,15 @@ export class Input {
   private yawDelta = 0
   private pitchDelta = 0
   private locked = false
+  private dragging = false
 
   constructor(private readonly canvas: HTMLCanvasElement, touchUi?: TouchUiElements) {
     window.addEventListener('keydown', this.onKeyDown)
     window.addEventListener('keyup', this.onKeyUp)
     document.addEventListener('pointerlockchange', this.onLockChange)
     document.addEventListener('mousemove', this.onMouseMove)
+    canvas.addEventListener('mousedown', this.onMouseDown)
+    window.addEventListener('mouseup', this.onMouseUp)
 
     if (touchUi && isTouchDevice()) {
       this.touch = new TouchControls(touchUi.surface, touchUi.stick, touchUi.knob, touchUi.interact)
@@ -46,9 +49,18 @@ export class Input {
   }
 
   private onMouseMove = (event: MouseEvent): void => {
-    if (!this.locked) return
+    // Pointer lock is unavailable in some embeddings, so an unlocked drag looks around instead.
+    if (!this.locked && !this.dragging) return
     this.yawDelta -= event.movementX
     this.pitchDelta -= event.movementY
+  }
+
+  private onMouseDown = (event: MouseEvent): void => {
+    if (event.button === 0) this.dragging = true
+  }
+
+  private onMouseUp = (): void => {
+    this.dragging = false
   }
 
   /** Pointer lock is a desktop affordance; a touch device drives look by dragging instead. */
@@ -103,6 +115,8 @@ export class Input {
     window.removeEventListener('keyup', this.onKeyUp)
     document.removeEventListener('pointerlockchange', this.onLockChange)
     document.removeEventListener('mousemove', this.onMouseMove)
+    this.canvas.removeEventListener('mousedown', this.onMouseDown)
+    window.removeEventListener('mouseup', this.onMouseUp)
     this.touch?.dispose()
   }
 }

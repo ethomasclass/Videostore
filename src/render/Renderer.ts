@@ -90,9 +90,14 @@ export class Renderer {
 
   /** Returns the new aspect so the caller can keep its camera in step. */
   resize(): number {
-    this.renderer.setSize(window.innerWidth, window.innerHeight, false)
+    // Measured from the canvas, not the window: when the page is embedded or padded, the two
+    // differ and sizing to the window leaves the view offset from what the player sees.
+    const canvas = this.renderer.domElement
+    const width = Math.max(canvas.clientWidth, 1)
+    const height = Math.max(canvas.clientHeight, 1)
+    this.renderer.setSize(width, height, false)
 
-    const windowAspect = window.innerWidth / Math.max(window.innerHeight, 1)
+    const windowAspect = width / height
     this.internalWidth = Math.round(
       THREE.MathUtils.clamp(INTERNAL_HEIGHT * windowAspect, MIN_INTERNAL_WIDTH, MAX_INTERNAL_WIDTH),
     )

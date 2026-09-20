@@ -29,8 +29,8 @@ body {
 
 #viewport {
   display: block;
-  width: 100vw;
-  height: 100dvh;
+  width: 100%;
+  height: 100%;
   /* Point-sampled upscale from the low-res internal buffer. */
   image-rendering: pixelated;
   touch-action: none;
