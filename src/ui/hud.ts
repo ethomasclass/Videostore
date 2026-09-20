@@ -29,7 +29,10 @@ export class Hud {
   private readonly caseMeta = need('case-meta')
   private readonly caseSynopsis = need('case-synopsis')
   private readonly caseStarring = need('case-starring')
+  private readonly toast = need('hud-toast')
   private caseWasDismissed = false
+  private readonly taskRows = new Map<number, HTMLElement>()
+  private toastTimer = 0
 
   readonly touchUi: TouchUiElements = {
     root: need('touch-ui'),
@@ -148,18 +151,102 @@ export class Hud {
     this.speech.hidden = true
   }
 
+  /**
+   * Parks the bubble over whoever is speaking. Screen coordinates come from projecting their
+   * head, and the clamp keeps a bubble on screen when its owner is walking off the edge of it.
+   */
+  anchorSpeech(x: number, y: number, onScreen: boolean): void {
+    if (this.speech.hidden) return
+    this.speech.classList.toggle('offscreen', !onScreen)
+    const width = this.speech.offsetWidth
+    const margin = 12
+    const clampedX = Math.max(width / 2 + margin, Math.min(window.innerWidth - width / 2 - margin, x))
+    const clampedY = Math.max(this.speech.offsetHeight + margin, Math.min(window.innerHeight - margin, y))
+    this.speech.style.left = `${clampedX}px`
+    this.speech.style.top = `${clampedY}px`
+  }
+
+  /**
+   * The checklist. Rows are kept by job id and reconciled rather than rebuilt, so a row can
+   * hold its place while it animates — a list that is thrown away every frame cannot tick
+   * anything off, it can only make things vanish, which is the opposite of satisfying.
+   */
   setJobs(jobs: readonly Job[]): void {
-    // Most urgent first, capped — a wall of text is not readable mid-shift.
     const visible = [...jobs].sort((a, b) => a.timeLeft - b.timeLeft).slice(0, 4)
-    this.taskList.replaceChildren(
-      ...visible.map((job) => {
-        const row = document.createElement('div')
-        row.className = 'task'
-        if (job.timeLeft < 20) row.classList.add('urgent')
-        row.textContent = job.label
-        return row
-      }),
-    )
+    const seen = new Set<number>()
+
+    for (const job of visible) {
+      seen.add(job.id)
+      let row = this.taskRows.get(job.id)
+      if (!row) {
+        row = this.buildTaskRow(job)
+        this.taskRows.set(job.id, row)
+        this.taskList.append(row)
+      }
+      const text = row.querySelector('.task-text')
+      if (text && text.textContent !== job.label) text.textContent = job.label
+      row.classList.toggle('urgent', job.timeLeft < 20)
+      const bar = row.querySelector<HTMLElement>('.task-bar span')
+      if (bar) bar.style.width = `${Math.max(0, Math.min(1, job.timeLeft / job.patience)) * 100}%`
+    }
+
+    // Anything gone from the board that was not resolved explicitly just leaves.
+    for (const [id, row] of this.taskRows) {
+      if (seen.has(id) || row.dataset.resolving) continue
+      this.taskRows.delete(id)
+      row.remove()
+    }
+
+    // The list is sorted by urgency, so keep the DOM in that order without rebuilding it.
+    visible.forEach((job, index) => {
+      const row = this.taskRows.get(job.id)
+      if (row && this.taskList.children[index] !== row) this.taskList.insertBefore(row, this.taskList.children[index] ?? null)
+    })
+  }
+
+  private buildTaskRow(job: Job): HTMLElement {
+    const row = document.createElement('div')
+    row.className = 'task'
+
+    const check = document.createElement('span')
+    check.className = 'task-check'
+
+    const text = document.createElement('span')
+    text.className = 'task-text'
+    text.textContent = job.label
+
+    const bar = document.createElement('div')
+    bar.className = 'task-bar'
+    bar.append(document.createElement('span'))
+
+    row.append(check, text, bar)
+    return row
+  }
+
+  /**
+   * Strikes a job off, or marks it blown. The row holds its place for the length of the
+   * animation and then collapses, which is the difference between "that is done" and
+   * "something disappeared from a list".
+   */
+  resolveJob(id: number, outcome: 'done' | 'failed'): void {
+    const row = this.taskRows.get(id)
+    if (!row || row.dataset.resolving) return
+    row.dataset.resolving = outcome
+    row.classList.remove('urgent')
+    row.classList.add(outcome === 'done' ? 'done' : 'failed')
+    this.taskRows.delete(id)
+    window.setTimeout(() => row.remove(), 900)
+  }
+
+  /** A line of feedback under the crosshair: what just happened, and whether it was right. */
+  showToast(text: string, tone: 'good' | 'bad' = 'good'): void {
+    this.toast.textContent = text
+    this.toast.dataset.tone = tone
+    this.toast.hidden = false
+    window.clearTimeout(this.toastTimer)
+    this.toastTimer = window.setTimeout(() => {
+      this.toast.hidden = true
+    }, 2200)
   }
 
   showReport(lines: readonly ReportLine[], verdictTitle: string, verdictBody: string): void {

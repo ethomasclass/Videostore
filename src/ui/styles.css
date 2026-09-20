@@ -106,10 +106,46 @@ body {
 }
 
 .task {
-  padding: 5px 10px;
+  position: relative;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 10px 7px;
   background: rgba(11, 14, 22, 0.72);
   border-left: 4px solid var(--brand-blue);
   font-size: 13px;
+  overflow: hidden;
+  transition: background 0.18s linear;
+}
+
+/* The empty box that gets ticked. */
+.task-check {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border: 1px solid rgba(239, 233, 216, 0.55);
+}
+
+.task-text {
+  flex: 1;
+}
+
+/* How long is left, drawn along the bottom edge rather than as another number to read. */
+.task-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: rgba(239, 233, 216, 0.12);
+}
+
+.task-bar span {
+  display: block;
+  height: 100%;
+  width: 100%;
+  background: var(--brand-yellow);
+  transition: width 0.2s linear;
 }
 
 .task.urgent {
@@ -117,9 +153,103 @@ body {
   animation: nag 0.8s steps(2, end) infinite;
 }
 
+.task.urgent .task-bar span {
+  background: var(--bad);
+}
+
 @keyframes nag {
   50% {
     background: rgba(224, 104, 95, 0.35);
+  }
+}
+
+/* --- Striking a job off. The row holds its place, ticks, then collapses. --- */
+
+.task.done {
+  border-left-color: var(--good);
+  background: rgba(122, 199, 122, 0.3);
+  animation: task-out 0.9s ease-in forwards;
+}
+
+.task.done .task-check {
+  background: var(--good);
+  border-color: var(--good);
+}
+
+/* The tick itself: two strokes drawn with a rotated box. */
+.task.done .task-check::after {
+  content: '';
+  display: block;
+  width: 3px;
+  height: 7px;
+  margin: -1px 0 0 3px;
+  border: solid #10160f;
+  border-width: 0 2px 2px 0;
+  transform: rotate(42deg);
+}
+
+.task.done .task-text {
+  text-decoration: line-through;
+  opacity: 0.8;
+}
+
+.task.failed {
+  animation: task-out 0.9s ease-in forwards;
+  border-left-color: var(--bad);
+  background: rgba(224, 104, 95, 0.32);
+}
+
+.task.failed .task-text {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+@keyframes task-out {
+  0% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  55% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(-14px);
+    opacity: 0;
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-top: -4px;
+  }
+}
+
+/* --- One line of feedback under the crosshair --- */
+
+#hud-toast {
+  position: absolute;
+  top: 62%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 7px 16px;
+  background: rgba(11, 14, 22, 0.88);
+  border-left: 4px solid var(--good);
+  font-size: 14px;
+  white-space: nowrap;
+  animation: toast-in 0.18s ease-out;
+}
+
+#hud-toast[hidden] {
+  display: none;
+}
+
+#hud-toast[data-tone='bad'] {
+  border-left-color: var(--bad);
+}
+
+@keyframes toast-in {
+  from {
+    transform: translate(-50%, 6px);
+    opacity: 0;
   }
 }
 
@@ -147,15 +277,44 @@ body {
 
 /* --- What the customer is saying. Sits low and wide so it never fights the crosshair. --- */
 
+/* Anchored over the speaker's head: left/top are set per frame from their projected
+   position, and the element is pulled up and left so the tail lands on them. */
 #hud-speech {
   position: absolute;
   left: 50%;
-  bottom: 84px;
-  transform: translateX(-50%);
-  width: min(560px, calc(100% - 40px));
-  padding: 10px 16px 12px;
-  background: rgba(11, 14, 22, 0.86);
+  top: 50%;
+  transform: translate(-50%, -100%);
+  width: max-content;
+  max-width: min(360px, calc(100vw - 40px));
+  padding: 9px 14px 10px;
+  background: rgba(11, 14, 22, 0.9);
+  border: 1px solid rgba(239, 233, 216, 0.35);
   border-left: 5px solid var(--brand-yellow);
+  animation: speech-in 0.16s ease-out;
+}
+
+/* The little stem pointing down at whoever said it. */
+.speech-tail {
+  position: absolute;
+  left: 22px;
+  bottom: -7px;
+  width: 0;
+  height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-top: 7px solid rgba(11, 14, 22, 0.9);
+}
+
+/* Speaker is off the edge of the screen: the bubble is clamped, so drop the tail. */
+#hud-speech.offscreen .speech-tail {
+  display: none;
+}
+
+@keyframes speech-in {
+  from {
+    transform: translate(-50%, calc(-100% + 8px));
+    opacity: 0;
+  }
 }
 
 #hud-speech[hidden] {

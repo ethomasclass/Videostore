@@ -53,6 +53,27 @@ export class Sfx {
     source.stop(at + options.duration + 0.02)
   }
 
+  /** A clean pitched blip. The only non-mechanical voice in the palette, saved for feedback. */
+  private blip(frequency: number, peak: number, delay = 0, duration = 0.12): void {
+    const context = this.ctx
+    const master = audioMaster()
+    if (!context || !master) return
+
+    const at = context.currentTime + delay
+    const osc = context.createOscillator()
+    osc.type = 'triangle'
+    osc.frequency.setValueAtTime(frequency, at)
+
+    const gain = context.createGain()
+    gain.gain.setValueAtTime(0, at)
+    gain.gain.linearRampToValueAtTime(peak, at + 0.008)
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + duration)
+
+    osc.connect(gain).connect(master)
+    osc.start(at)
+    osc.stop(at + duration + 0.02)
+  }
+
   private thump(frequency: number, drop: number, peak: number, delay = 0): void {
     const context = this.ctx
     const master = audioMaster()
@@ -150,6 +171,23 @@ export class Sfx {
     for (let i = 0; i < 7; i += 1) {
       this.burst({ duration: 0.035, peak: 0.07, frequency: 1800, q: 1.2, delay: i * 0.055 })
     }
+  }
+
+  /**
+   * A job coming off the board. A rubber stamp and two notes up — the stamp is the store, the
+   * notes are the scoreboard, and together they are the only unambiguously good sound in here.
+   */
+  jobDone(): void {
+    this.thump(220, 110, 0.13)
+    this.burst({ duration: 0.05, peak: 0.12, frequency: 1600, q: 1.1 })
+    this.blip(784, 0.085, 0.05)
+    this.blip(1175, 0.075, 0.13, 0.16)
+  }
+
+  /** The tape that does not go on this shelf. A flat, unhappy buzz. */
+  wrongSection(): void {
+    this.blip(196, 0.09, 0, 0.16)
+    this.blip(185, 0.08, 0.1, 0.2)
   }
 
   /** Something soft dropped into a bin, or a box opened. */

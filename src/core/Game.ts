@@ -15,6 +15,7 @@ import { Sfx } from '../audio/Sfx'
 import { Hands } from '../world/Hands'
 import { Customer } from '../sim/Customer'
 import type { StationKind } from '../world/Store'
+import { GENRE_LABEL } from '../data/catalog'
 
 type Phase = 'title' | 'shift' | 'report'
 
@@ -28,6 +29,8 @@ const INTERACT_RANGE = 2.4
 const MAX_DT = 1 / 20
 /** Screen centre, where the crosshair is. Reused so the hot loop allocates nothing. */
 const CENTER = new THREE.Vector2(0, 0)
+/** Scratch for projecting a speaker's head to the screen. */
+const PROJECTED = new THREE.Vector3()
 
 export class Game {
   private readonly renderer: Renderer
@@ -51,10 +54,13 @@ export class Game {
   private reading = false
   private fidelity: Fidelity = DEFAULT_FIDELITY
   /** An action in progress: the player is pinned in place until its animation finishes. */
-  private busy: { station: StationKind; timeLeft: number } | null = null
+  private busy: { station: StationKind; timeLeft: number; jobId: number | null } | null = null
   private customerJobId: number | null = null
   /** The deck keeps running after the hands are done, so the job settles when it ejects. */
   private rewindPending = false
+  private rewindJobId: number | null = null
+  /** A quick downward nod on the camera when something lands. Decays to nothing. */
+  private kick = 0
   /** 0 at the player's own eyes, 1 parked in front of the terminal's CRT. */
   private monitorZoom = 0
   private readonly monitorQuaternion = new THREE.Quaternion()
@@ -139,6 +145,8 @@ export class Game {
     this.hud.hideSpeech()
     this.speechLeft = 0
     this.rewindPending = false
+    this.rewindJobId = null
+    this.kick = 0
     this.monitorZoom = 0
     this.phase = 'shift'
     this.hud.showShift()
@@ -176,6 +184,8 @@ export class Game {
     this.hud.setClock(this.clock.format())
     this.hud.setJobs(this.jobs.jobs)
 
+    for (const job of this.jobs.drainExpired()) this.hud.resolveJob(job.id, 'failed')
+
     this.customer.update(dt)
     this.syncCustomerJob()
     this.updateSpeech(dt)
@@ -183,7 +193,8 @@ export class Game {
     this.store.rewinder.update(dt, this.sfx)
     if (this.rewindPending && !this.store.rewinder.isRunning) {
       this.rewindPending = false
-      this.jobs.complete('rewind', this.scorecard)
+      this.settleJob(this.rewindJobId, 'Rewound')
+      this.rewindJobId = null
     }
 
     if (this.terminal.isOpen) {
@@ -207,7 +218,7 @@ export class Game {
         if (this.input.consumeFidelityToggle()) this.cycleFidelity()
 
         if (this.input.consumeInteract() && target) {
-          if (target.kind === 'station') this.beginStation(target.station)
+          if (target.kind === 'station') this.beginStation(target)
           else if (target.kind === 'talk') this.customer.chat(this.player.position)
           else this.openCase(target.title)
         }
@@ -215,7 +226,11 @@ export class Game {
     }
 
     this.hands.update(dt, this.player.isMoving)
+    this.applyKick(dt)
     this.applyMonitorZoom(dt)
+    // After the camera has been posed for this frame, or the bubble lags a frame behind the
+    // head it is supposed to be sitting on.
+    this.positionSpeech()
 
     // Dev-only probe. Scripted playtests need to know where they ended up; dead reckoning
     // through acceleration and collisions does not survive contact with the floor plan.
@@ -238,7 +253,9 @@ export class Game {
    * The register is the one station that opens the rental system instead of resolving on the
    * spot — the sale is the terminal's to complete, and the animation plays after it.
    */
-  private beginStation(station: StationKind): void {
+  private beginStation(entry: Extract<Interactable, { kind: 'station' }>): void {
+    const station = entry.station
+
     if (station === 'register') {
       this.hud.setModalOpen(true)
       this.terminal.open(
@@ -254,7 +271,31 @@ export class Game {
       return
     }
 
-    this.busy = { station, timeLeft: this.hands.play(station) }
+    // A shelf run only takes what belongs on it. Pick the job here rather than at the end of
+    // the animation, so the refusal lands the instant the player presses the key.
+    let jobId: number | null = null
+    if (station === 'shelf') {
+      const waiting = this.jobs.pending('shelf')
+      if (waiting.length === 0) {
+        this.hud.showToast('Nothing to put away right now', 'good')
+        return
+      }
+      const sections = entry.sections ?? []
+      const match = waiting.find((job) => job.title && sections.includes(job.title.genre))
+      if (!match) {
+        const stray = waiting[0]
+        const genre = stray?.title ? GENRE_LABEL[stray.title.genre] : 'another section'
+        this.hud.showToast(`Wrong section \u2014 that one is ${genre}`, 'bad')
+        this.sfx.wrongSection()
+        this.buzz(45)
+        return
+      }
+      jobId = match.id
+    } else {
+      jobId = this.jobs.pending(station)[0]?.id ?? null
+    }
+
+    this.busy = { station, timeLeft: this.hands.play(station), jobId }
     this.player.frozen = true
 
     switch (station) {
@@ -266,12 +307,46 @@ export class Game {
         this.sfx.deckOpen()
         this.store.rewinder.start()
         this.rewindPending = true
+        this.rewindJobId = jobId
         break
       case 'returns':
       case 'restock':
         this.sfx.thud(0.35)
         break
     }
+  }
+
+  /**
+   * Everything that happens when a job comes off the board: the sound, the tick on the
+   * checklist, the nod of the camera and, on a phone, the buzz. One place, so no station can
+   * land more quietly than another.
+   */
+  private settleJob(jobId: number | null, verb: string): void {
+    if (jobId === null) return
+    const job = this.jobs.completeById(jobId, this.scorecard)
+    if (!job) return
+    this.hud.resolveJob(job.id, 'done')
+
+    // A rewound tape is not finished with you — it is now a tape sitting on the counter that
+    // belongs in its own section. That chain is what ties the three stations into one loop.
+    const followUp = job.kind === 'rewind' && job.title ? this.jobs.addFollowUp('shelf', job.title) : null
+    this.hud.showToast(followUp ? `${verb} \u2014 now shelve it` : `${verb} \u2014 nice`, 'good')
+    this.sfx.jobDone()
+    this.kick = 1
+    this.buzz(18)
+  }
+
+  /** Haptics where there are any. Silently absent on a desktop, which is the whole API. */
+  private buzz(ms: number): void {
+    navigator.vibrate?.(ms)
+  }
+
+  /** A short nod, so finishing a job is felt in the hands as well as read on the board. */
+  private applyKick(dt: number): void {
+    if (this.kick <= 0.001) return
+    this.kick = THREE.MathUtils.damp(this.kick, 0, 9, dt)
+    this.player.camera.rotation.x -= this.kick * 0.03
+    this.player.camera.position.y -= this.kick * 0.02
   }
 
   /**
@@ -292,13 +367,16 @@ export class Game {
   }
 
   private finishAction(): void {
-    const station = this.busy?.station
+    const finished = this.busy
     this.busy = null
     this.player.frozen = false
+    if (!finished) return
+
     // The register is settled by the terminal, and the rewinder settles when the deck ejects.
-    if (station && station !== 'register' && station !== 'rewind') {
-      this.jobs.complete(station, this.scorecard)
-    }
+    if (finished.station === 'register' || finished.station === 'rewind') return
+
+    const verb = finished.station === 'shelf' ? 'Shelved' : finished.station === 'returns' ? 'Bin emptied' : 'Crate broken down'
+    this.settleJob(finished.jobId, verb)
   }
 
   private updateTerminal(): void {
@@ -309,12 +387,12 @@ export class Game {
       this.hud.setModalOpen(false)
       this.input.requestLock()
       if (this.customerJobId !== null) {
-        this.jobs.completeById(this.customerJobId, this.scorecard)
+        this.settleJob(this.customerJobId, 'Rented out')
         this.customerJobId = null
       }
       this.customer.serve()
       this.sfx.receipt()
-      this.busy = { station: 'register', timeLeft: this.hands.play('register') }
+      this.busy = { station: 'register', timeLeft: this.hands.play('register'), jobId: null }
       this.player.frozen = true
       return
     }
@@ -332,6 +410,7 @@ export class Game {
     if (line) {
       this.hud.showSpeech(line.name, line.text)
       this.speechLeft = speechDuration(line.text)
+      this.positionSpeech()
       return
     }
 
@@ -339,6 +418,32 @@ export class Game {
       this.speechLeft -= dt
       if (this.speechLeft <= 0) this.hud.hideSpeech()
     }
+  }
+
+  /** Parks the speech bubble over the speaker's head, in screen space. */
+  private positionSpeech(): void {
+    if (this.speechLeft <= 0) return
+
+    const camera = this.player.camera
+    camera.updateMatrixWorld()
+    // A little above the top of their head, so the tail points at them and not through them.
+    PROJECTED.set(this.customer.root.position.x, 1.95, this.customer.root.position.z)
+    PROJECTED.project(camera)
+
+    const onScreen = PROJECTED.z <= 1 && Math.abs(PROJECTED.x) <= 1 && Math.abs(PROJECTED.y) <= 1
+    if (!onScreen) {
+      // You can still hear someone you are not looking at, so the line stays readable — but
+      // pinned low and centred, where it reads as overheard rather than as pointing at the
+      // wrong thing. Clamping it to an edge just parks it on top of the checklist.
+      this.hud.anchorSpeech(window.innerWidth / 2, window.innerHeight - 96, false)
+      return
+    }
+
+    this.hud.anchorSpeech(
+      ((PROJECTED.x + 1) / 2) * window.innerWidth,
+      ((1 - PROJECTED.y) / 2) * window.innerHeight,
+      true,
+    )
   }
 
   /** Keeps the board and the person at the counter describing the same thing. */

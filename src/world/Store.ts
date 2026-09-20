@@ -20,7 +20,15 @@ export type StationKind = 'rewind' | 'returns' | 'register' | 'restock' | 'shelf
 
 /** Doing a job, versus picking a case up to read the back of it — different verbs entirely. */
 export type Interactable =
-  | { object: THREE.Object3D; label: string; kind: 'station'; station: StationKind }
+  | {
+      object: THREE.Object3D
+      label: string
+      kind: 'station'
+      station: StationKind
+      /** For a shelf run: the genres that actually live on it. A tape only goes back where
+       *  it belongs, so the station has to know what it holds. */
+      sections?: readonly Genre[]
+    }
   | { object: THREE.Object3D; label: string; kind: 'inspect'; title: Title }
 
 export interface BuiltStore {
@@ -290,6 +298,8 @@ interface RunOptions {
   signText?: readonly [string, string]
   label?: string
   station?: StationKind
+  /** Passed through to the station, so shelving can be checked against the run. */
+  sections?: readonly Genre[]
   /** Fraction of slots left empty, so shelves do not read as a solid painted block. */
   gaps?: number
 }
@@ -368,7 +378,13 @@ function buildRun(build: Build, options: RunOptions): void {
     const zone = hitbox(depth + 0.4, height, length)
     zone.position.set(x, height / 2, centerZ)
     root.add(zone)
-    interactables.push({ object: zone, label: options.label, kind: 'station', station: options.station })
+    interactables.push({
+      object: zone,
+      label: options.label,
+      kind: 'station',
+      station: options.station,
+      sections: options.sections,
+    })
   }
 }
 
@@ -394,8 +410,11 @@ function buildFilmAisles(build: Build): void {
         signColor: BRAND.blue,
         signText: [GENRE_LABEL[left], GENRE_LABEL[right]],
         spines: [left, right],
-        label: 'Shelve a tape',
+        // The label names the run, so a player deciding where a tape goes can read the
+        // answer off the prompt instead of guessing at a wall of identical shelving.
+        label: `Shelve here \u2014 ${GENRE_LABEL[left]} / ${GENRE_LABEL[right]}`,
         station: 'shelf',
+        sections: [left, right],
       })
     })
   })
