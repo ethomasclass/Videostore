@@ -14,7 +14,7 @@ const BOB_HEIGHT = 0.035
 
 export class Player {
   readonly camera: THREE.PerspectiveCamera
-  readonly position = new THREE.Vector3(-0.25, EYE_HEIGHT, 7.5)
+  readonly position = new THREE.Vector3(-7, EYE_HEIGHT, 7.2)
 
   /** Clocked in at the door, facing down the aisles toward the New Release wall. */
   private yaw = 0
@@ -23,8 +23,9 @@ export class Player {
   private bobPhase = 0
 
   constructor(aspect: number) {
-    // A narrow-ish FOV keeps the affine warp from tearing at the screen edges.
-    this.camera = new THREE.PerspectiveCamera(68, aspect, 0.08, 60)
+    // A narrow-ish FOV keeps the affine warp from tearing at the screen edges. The far plane
+    // has to clear the sky backdrop and its corners, which sit well beyond the parking lot.
+    this.camera = new THREE.PerspectiveCamera(68, aspect, 0.08, 220)
     this.camera.position.copy(this.position)
   }
 

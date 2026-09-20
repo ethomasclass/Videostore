@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { Renderer } from '../render/Renderer'
 import { FOG } from '../render/palette'
-import { buildStore, type BuiltStore, type Interactable } from '../world/Store'
+import { buildStore, SPAWN, type BuiltStore, type Interactable } from '../world/Store'
 import type { Title } from '../data/catalog'
 import { Player } from '../world/Player'
 import { Input } from './Input'
@@ -74,7 +74,7 @@ export class Game {
     this.clock.reset()
     this.jobs.reset()
     this.scorecard.reset()
-    this.player.position.set(-0.25, this.player.position.y, 7.5)
+    this.player.position.set(SPAWN.x, this.player.position.y, SPAWN.z)
     this.phase = 'shift'
     this.hud.showShift()
     this.input.requestLock()
