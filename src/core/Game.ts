@@ -18,6 +18,12 @@ import type { StationKind } from '../world/Store'
 
 type Phase = 'title' | 'shift' | 'report'
 
+/** Anything the crosshair can land on: a fixture in the store, or the person standing in it. */
+type Target = Interactable | { kind: 'talk'; label: string }
+
+/** How long a spoken line stays up. Long enough to read, short enough not to nag. */
+const speechDuration = (text: string): number => Math.min(9, 3.2 + text.length * 0.035)
+
 const INTERACT_RANGE = 2.4
 const MAX_DT = 1 / 20
 /** Screen centre, where the crosshair is. Reused so the hot loop allocates nothing. */
@@ -54,6 +60,8 @@ export class Game {
   private readonly monitorQuaternion = new THREE.Quaternion()
 
   private readonly interactObjects: THREE.Object3D[]
+  /** Counts down whatever the customer last said. */
+  private speechLeft = 0
   private readonly byObject = new Map<THREE.Object3D, Interactable>()
 
   constructor(canvas: HTMLCanvasElement) {
@@ -65,6 +73,8 @@ export class Game {
 
     this.interactObjects = this.store.interactables.map((entry) => entry.object)
     for (const entry of this.store.interactables) this.byObject.set(entry.object, entry)
+    // The customer is not a fixture, so their talk volume rides alongside the store's own.
+    this.interactObjects.push(this.customer.talkZone)
 
     this.player = new Player(this.renderer.aspect)
     // The camera joins the scene graph so the arms, parented to it, are actually traversed.
@@ -126,6 +136,8 @@ export class Game {
     this.busy = null
     this.customerJobId = null
     this.customer.reset()
+    this.hud.hideSpeech()
+    this.speechLeft = 0
     this.rewindPending = false
     this.monitorZoom = 0
     this.phase = 'shift'
@@ -141,6 +153,7 @@ export class Game {
     this.terminal.close()
     this.hud.setModalOpen(false)
     this.radio.stop()
+    this.hud.hideSpeech()
     const verdict = VERDICT_COPY[this.scorecard.verdict]
     this.hud.showReport(this.scorecard.report(), verdict.title, verdict.body)
   }
@@ -165,6 +178,7 @@ export class Game {
 
     this.customer.update(dt)
     this.syncCustomerJob()
+    this.updateSpeech(dt)
 
     this.store.rewinder.update(dt, this.sfx)
     if (this.rewindPending && !this.store.rewinder.isRunning) {
@@ -194,6 +208,7 @@ export class Game {
 
         if (this.input.consumeInteract() && target) {
           if (target.kind === 'station') this.beginStation(target.station)
+          else if (target.kind === 'talk') this.customer.chat(this.player.position)
           else this.openCase(target.title)
         }
       }
@@ -205,8 +220,11 @@ export class Game {
     // Dev-only probe. Scripted playtests need to know where they ended up; dead reckoning
     // through acceleration and collisions does not survive contact with the floor plan.
     if (import.meta.env.DEV) {
+      ;(window as unknown as Record<string, unknown>).__tp = (x: number, z: number, yaw: number, pitch = 0) =>
+        this.player.teleport(x, z, yaw, pitch)
       ;(window as unknown as Record<string, unknown>).__probe = {
         pos: this.player.position.toArray().map((n) => Number(n.toFixed(2))),
+        yaw: Number(this.player.heading.toFixed(3)),
         customer: this.customer.state,
         rewinding: this.store.rewinder.isRunning,
         zoom: Number(this.monitorZoom.toFixed(2)),
@@ -308,6 +326,21 @@ export class Game {
     }
   }
 
+  /** Whatever the customer came out with goes straight to the HUD, and times itself out. */
+  private updateSpeech(dt: number): void {
+    const line = this.customer.consumeSpeech()
+    if (line) {
+      this.hud.showSpeech(line.name, line.text)
+      this.speechLeft = speechDuration(line.text)
+      return
+    }
+
+    if (this.speechLeft > 0) {
+      this.speechLeft -= dt
+      if (this.speechLeft <= 0) this.hud.hideSpeech()
+    }
+  }
+
   /** Keeps the board and the person at the counter describing the same thing. */
   private syncCustomerJob(): void {
     if (this.customer.isWaiting && this.customerJobId === null) {
@@ -344,9 +377,19 @@ export class Game {
    * One batched raycast against every interactable at once. Casting per interactable was fine
    * for five stations; it is not once every case on the New Release wall is readable.
    */
-  private findTarget(): Interactable | null {
+  private findTarget(): Target | null {
     this.raycaster.setFromCamera(CENTER, this.player.camera)
     const hit = this.raycaster.intersectObjects(this.interactObjects, false)[0]
-    return hit ? this.byObject.get(hit.object) ?? null : null
+    if (!hit) return null
+
+    if (hit.object === this.customer.talkZone) {
+      // The volume travels with a customer who may have gone home, so check they are in fact
+      // standing there before offering to talk to them.
+      if (!this.customer.isPresent) return null
+      const first = this.customer.name.split(' ')[0] ?? 'them'
+      return { kind: 'talk', label: `Talk to ${first}` }
+    }
+
+    return this.byObject.get(hit.object) ?? null
   }
 }

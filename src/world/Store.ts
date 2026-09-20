@@ -6,6 +6,7 @@ import { lacklusterLogoTexture } from '../render/logoTexture'
 import { posterTexture, type PosterId } from '../render/posterTexture'
 import { BRAND, GENRE_COLOR, ROOM } from '../render/palette'
 import { signTexture } from '../render/signTexture'
+import { spineStripTexture } from '../render/spineTexture'
 import { CATALOG, GENRE_LABEL, newReleases, type Genre, type Title } from '../data/catalog'
 import { box, unlitBox, hitbox, panel, place, DOORS, FRONT_SOLID_HALF, STORE, VHS } from './buildKit'
 import { buildParkingLot, buildStorefront } from './exterior'
@@ -35,7 +36,14 @@ export interface BuiltStore {
 export const SPAWN = { x: DOORS.entranceX, z: 7.2 } as const
 
 const GONDOLA = { length: 11, depth: 0.55, height: 1.7 } as const
-const TIER_Y = [0.4, 0.86, 1.32] as const
+
+/** How far a department header stands off the top of its run, on a pair of posts. */
+const SIGN_RISE = 0.62
+/**
+ * Five tiers at a 30cm pitch. Three left half the gondola face as bare panel, which is not what
+ * a stocked shelf looks like — the whole point of a wall of tape is that there is no wall left.
+ */
+const TIER_Y = [0.34, 0.64, 0.94, 1.24, 1.54] as const
 
 /**
  * The counter island, dead centre, open at the back so staff can step into it. It and the
@@ -121,6 +129,7 @@ export function buildStore(): BuiltStore {
   buildNewReleaseWall(build)
   buildCounter(build)
   buildPosters(build)
+  buildBackWall(build)
   buildProps(build)
 
   for (const [color, geometries] of itemsByColor) {
@@ -271,6 +280,11 @@ interface RunOptions {
   item: Item
   /** One color per side, so a run can carry two departments back to back. */
   colors: readonly [number, number]
+  /**
+   * Faces this run with drawn VHS spines instead of colored blocks — one strip per tier per
+   * side. Anything that is not tape (games, music) keeps the blocks.
+   */
+  spines?: readonly [Genre, Genre]
   signColor: number
   /** Section names printed on the header sign, one per side of the run. */
   signText?: readonly [string, string]
@@ -290,25 +304,50 @@ function buildRun(build: Build, options: RunOptions): void {
   colliders.push(place(root, body, x, height / 2, centerZ))
 
   for (const y of tiers) {
-    const board = box(depth + 0.06, 0.04, length, ROOM.shelfTrim)
+    // Wide enough to carry the stock that stands proud of the gondola body.
+    const board = box(depth + 0.34, 0.04, length, ROOM.shelfTrim)
     place(root, board, x, y - item.height / 2 - 0.02, centerZ)
   }
 
-  for (const y of tiers) {
+  tiers.forEach((y, tier) => {
     for (const side of [-1, 1] as const) {
-      const color = side === -1 ? colors[0] : colors[1]
       const count = Math.floor((length - 0.6) / item.width)
-      const startZ = centerZ - (count * item.width) / 2
+      const span = count * item.width
+
+      if (options.spines) {
+        const genre = options.spines[side === -1 ? 0 : 1]
+        // One plane carries the whole row. The block behind it gives the row its depth, so the
+        // shelf still reads as full when you look along it rather than at it.
+        place(root, box(0.15, item.height, span, 0x1b1e25), x + side * (depth / 2 + 0.005), y, centerZ)
+        const strip = panel(span, item.height, {
+          map: spineStripTexture({ count, genre, seed: Math.round(x * 31 + centerZ * 7 + tier * 3 + side), gaps }),
+        })
+        // Proud of the gondola's own face, sitting on the deck the way a row of tapes does.
+        strip.position.set(x + side * (depth / 2 + 0.081), y, centerZ)
+        strip.rotation.y = side * (Math.PI / 2)
+        root.add(strip)
+        continue
+      }
+
+      const color = side === -1 ? colors[0] : colors[1]
+      const startZ = centerZ - span / 2
       for (let i = 0; i < count; i += 1) {
         if (Math.random() < gaps) continue
         addItem(color, x + side * (depth / 2 - item.depth / 2 + 0.03), y, startZ + i * item.width, item)
       }
     }
-  }
+  })
 
+  // The header hangs clear of the stock rather than sitting on it: at a couple of centimetres
+  // above the deck it crowds the aisle and blocks the view down the run, and it is also not
+  // where a real one is — those swing from the ceiling or stand off a post.
   const signLength = Math.min(2.2, length - 0.4)
+  const signY = height + SIGN_RISE
+  for (const postZ of [centerZ - signLength / 2 + 0.12, centerZ + signLength / 2 - 0.12]) {
+    place(root, box(0.04, SIGN_RISE, 0.04, ROOM.shelfTrim), x, height + SIGN_RISE / 2, postZ)
+  }
   const sign = box(0.05, 0.34, signLength, signColor)
-  place(root, sign, x, height + 0.24, centerZ)
+  place(root, sign, x, signY, centerZ)
 
   // The header reads from the aisle on either side, so it is two panels rather than one
   // double-sided plane: a double-sided texture shows up mirrored from behind.
@@ -319,7 +358,7 @@ function buildRun(build: Build, options: RunOptions): void {
         map: signTexture(text, { background: signColor, aspect: signLength / 0.34 }),
         unlit: true,
       })
-      face.position.set(x + side * 0.031, height + 0.24, centerZ)
+      face.position.set(x + side * 0.031, signY, centerZ)
       face.rotation.y = side * (Math.PI / 2)
       root.add(face)
     }
@@ -354,6 +393,7 @@ function buildFilmAisles(build: Build): void {
         colors: [GENRE_COLOR[left], GENRE_COLOR[right]],
         signColor: BRAND.blue,
         signText: [GENRE_LABEL[left], GENRE_LABEL[right]],
+        spines: [left, right],
         label: 'Shelve a tape',
         station: 'shelf',
       })
@@ -367,7 +407,7 @@ function buildFilmAisles(build: Build): void {
   for (const x of FILM_AISLE_X) {
     for (const side of [-1, 1] as const) {
       const marker = panel(1.5, 0.38, { map: aisleLogo, unlit: true })
-      marker.position.set(x + side * 0.02, 2.5, SHELF_SEGMENTS[0].centerZ)
+      marker.position.set(x + side * 0.02, 2.95, SHELF_SEGMENTS[0].centerZ)
       marker.rotation.y = side * (Math.PI / 2)
       build.root.add(marker)
     }
@@ -471,14 +511,15 @@ function buildBargainBin({ root, colliders, addItem }: Build, x: number, z: numb
 }
 
 /** Wall-hung stock down both side walls, which is where the overflow genres lived. */
-function buildPerimeterShelving({ root, addItem }: Build): void {
+function buildPerimeterShelving({ root }: Build): void {
   const item: Item = { width: VHS.width, height: VHS.height, depth: VHS.depth, axis: 'z' }
-  // Three tiers, not four: the top row sat where the posters hang and buried them.
-  const tiers = [0.55, 1.05, 1.55]
+  // Stops short of the poster line: the top row used to sit where the frames hang.
+  const tiers = [0.45, 0.78, 1.11, 1.44, 1.77]
+  const span = 12.4
 
-  for (const [wallX, facing, colors] of [
-    [STORE.minX + 0.3, 1, [GENRE_COLOR.drama, GENRE_COLOR.family]],
-    [STORE.maxX - 0.3, -1, [GENRE_COLOR.horror, GENRE_COLOR.action]],
+  for (const [wallX, facing, genres] of [
+    [STORE.minX + 0.3, 1, ['drama', 'family', 'comedy']],
+    [STORE.maxX - 0.3, -1, ['horror', 'action', 'scifi']],
   ] as const) {
     const backing = box(0.3, 1.9, 13, ROOM.shelfBody)
     place(root, backing, wallX - facing * 0.15, 1.05, -2)
@@ -487,13 +528,15 @@ function buildPerimeterShelving({ root, addItem }: Build): void {
       const board = box(0.34, 0.04, 13, ROOM.shelfTrim)
       place(root, board, wallX, y - item.height / 2 - 0.02, -2)
 
-      const count = Math.floor(12.4 / item.width)
-      const startZ = -2 - (count * item.width) / 2
-      const color = colors[tier % colors.length] ?? GENRE_COLOR.drama
-      for (let i = 0; i < count; i += 1) {
-        if (Math.random() < 0.08) continue
-        addItem(color, wallX + facing * 0.09, y, startZ + i * item.width, item)
-      }
+      const genre = genres[tier % genres.length] ?? 'drama'
+      const count = Math.floor(span / item.width)
+      place(root, box(0.13, item.height, count * item.width, 0x1b1e25), wallX + facing * 0.05, y, -2)
+      const strip = panel(count * item.width, item.height, {
+        map: spineStripTexture({ count, genre, seed: Math.round(wallX * 13 + tier * 5), gaps: 0.09 }),
+      })
+      strip.position.set(wallX + facing * 0.12, y, -2)
+      strip.rotation.y = facing * (Math.PI / 2)
+      root.add(strip)
     })
   }
 }
@@ -504,11 +547,13 @@ function buildNewReleaseWall({ root, interactables }: Build): void {
   // Faced almost edge to edge, the way a release wall actually looks — and it means the
   // crosshair lands on a case rather than in the gap between two of them.
   const FACING = { width: 0.38, height: 0.52, tilt: -0.28 }
+  const CASE_DEPTH = 0.05
   const RACK = { columns: 30, rows: 3, startX: -9.2, spacingX: 0.42, topY: 2.05, spacingY: 0.6 }
   const wallZ = STORE.minZ + 0.04
 
   const tags: THREE.BufferGeometry[] = []
   const hotTags: THREE.BufferGeometry[] = []
+  const cases: THREE.BufferGeometry[] = []
 
   for (let row = 0; row < RACK.rows; row += 1) {
     const y = RACK.topY - row * RACK.spacingY
@@ -530,9 +575,21 @@ function buildNewReleaseWall({ root, interactables }: Build): void {
 
       const title = facingPool[slot % facingPool.length]
       if (!title) continue
+
+      // A case, not a picture of one: the sleeve art rides on the front of a thin black body,
+      // so the wall has edges and shadow gaps in it from anywhere off-axis. The bodies all
+      // share a color, so they merge into a single mesh at the end of the pass.
+      const body = new THREE.BoxGeometry(FACING.width, FACING.height, CASE_DEPTH)
+      body.applyMatrix4(new THREE.Matrix4().makeRotationX(FACING.tilt))
+      body.translate(x, y, wallZ + 0.09)
+      cases.push(body)
+
       const facing = panel(FACING.width, FACING.height, { map: boxArtTexture(title) })
       facing.rotation.x = FACING.tilt
-      facing.position.set(x, y, wallZ + 0.09)
+      // The tilted case's own front normal is (0, -sin t, cos t), so the art rides out along
+      // that rather than straight down +Z, or it sinks into the body at the top edge.
+      const lift = CASE_DEPTH / 2 + 0.002
+      facing.position.set(x, y - Math.sin(FACING.tilt) * lift, wallZ + 0.09 + Math.cos(FACING.tilt) * lift)
       root.add(facing)
       interactables.push({ object: facing, label: `Read ${title.title}`, kind: 'inspect', title })
     }
@@ -545,6 +602,7 @@ function buildNewReleaseWall({ root, interactables }: Build): void {
   }
   mergeTags(tags, ROOM.tag)
   mergeTags(hotTags, BRAND.yellow)
+  mergeTags(cases, 0x17171d)
 
   const centerX = RACK.startX + ((RACK.columns - 1) * RACK.spacingX) / 2
   const signWidth = RACK.columns * RACK.spacingX
@@ -556,6 +614,26 @@ function buildNewReleaseWall({ root, interactables }: Build): void {
   releaseSign.position.set(centerX, 2.62, STORE.minZ + 0.15)
   root.add(releaseSign)
   place(root, box(signWidth, 0.09, 0.1, BRAND.yellow), centerX, 2.38, STORE.minZ + 0.11)
+}
+
+/** A leaning stack of tapes in their sleeves, label edge out. Used all over the counter. */
+function tapeStack(root: THREE.Group, x: number, y: number, z: number, count: number, rotY = 0): void {
+  const group = new THREE.Group()
+  for (let i = 0; i < count; i += 1) {
+    const tape = box(0.195, 0.028, 0.105, 0x1b1e25)
+    // Nobody stacks these square. A couple of degrees of yaw per tape is the whole read.
+    tape.rotation.y = (i % 2 === 0 ? 1 : -1) * (0.02 + (i % 3) * 0.015)
+    tape.position.set((i % 3) * 0.006 - 0.006, 0.014 + i * 0.03, (i % 2) * 0.005)
+    group.add(tape)
+
+    const label = box(0.15, 0.016, 0.004, 0xe4dfcd)
+    label.rotation.y = tape.rotation.y
+    label.position.set(tape.position.x, tape.position.y, tape.position.z + 0.053)
+    group.add(label)
+  }
+  group.position.set(x, y, z)
+  group.rotation.y = rotY
+  root.add(group)
 }
 
 /**
@@ -687,17 +765,198 @@ function buildCounter(build: Build): void {
 
   build.monitorView.position.set(monitorX, monitorY + 0.05, monitorZ + 0.92)
   build.monitorView.target.set(monitorX, monitorY + 0.01, monitorZ + 0.21)
+
+  // --- The rest of the desk ---
+  // A counter with one computer on it looks like a kiosk. A counter mid-shift has the work
+  // piled on it: what came back in and has not been rewound, what has been rewound and has not
+  // been walked out to the floor, and the small stuff nobody ever tidied. Everything lives in
+  // the band the player can actually see over the bar, and clear of the two wings.
+  const staffZ = frontZ + 0.26
+  const customerZ = frontZ - 0.32
+
+  // Returns waiting on the deck, stacked beside it where the player's hands reach.
+  tapeStack(root, 2.25, top, staffZ - 0.16, 6, 0.12)
+  tapeStack(root, 2.62, top, staffZ + 0.1, 4, -0.2)
+  place(root, box(0.5, 0.12, 0.34, BRAND.yellow), 2.42, top + 0.06, staffZ + 0.3)
+  const rewindTag = panel(0.48, 0.1, {
+    map: signTexture('To Rewind', { background: BRAND.yellow, color: BRAND.blueDark, aspect: 4.8 }),
+    unlit: true,
+  })
+  rewindTag.position.set(2.42, top + 0.06, staffZ + 0.48)
+  root.add(rewindTag)
+
+  // Done and waiting to go back out: a crate of sleeves, faced so the spines read from here.
+  const crateX = -2.45
+  place(root, box(0.66, 0.36, 0.5, 0x9a5f3a), crateX, top + 0.18, staffZ + 0.02)
+  for (const [i, z] of [staffZ - 0.09, staffZ + 0.11].entries()) {
+    const count = 16
+    place(root, box(0.52, VHS.height, 0.03, 0x1b1e25), crateX, top + 0.3, z)
+    const strip = panel(count * VHS.width, VHS.height, {
+      map: spineStripTexture({ count, genre: i === 0 ? 'comedy' : 'action', seed: 401 + i, gaps: 0.02 }),
+    })
+    strip.position.set(crateX, top + 0.3, z + 0.02)
+    root.add(strip)
+  }
+  const shelveTag = panel(0.62, 0.11, {
+    map: signTexture('To Shelve', { background: BRAND.blue, aspect: 5.6 }),
+    unlit: true,
+  })
+  shelveTag.position.set(crateX, top + 0.42, staffZ + 0.28)
+  root.add(shelveTag)
+
+  // Receipt printer, with a curl of paper coming out of it.
+  place(root, box(0.26, 0.18, 0.28, BEIGE), -1.95, top + 0.09, staffZ + 0.2)
+  place(root, box(0.22, 0.02, 0.12, 0xf0ecdd), -1.95, top + 0.19, staffZ + 0.04)
+
+  // The phone. Beige, corded, and permanently ringing.
+  place(root, box(0.24, 0.07, 0.28, BEIGE_DARK), 0.72, top + 0.035, staffZ + 0.22)
+  place(root, box(0.26, 0.06, 0.1, 0x2f3138), 0.72, top + 0.1, staffZ + 0.12)
+  place(root, box(0.02, 0.02, 0.2, 0x2f3138), 0.9, top + 0.02, staffZ + 0.4)
+
+  // Pens, a tape dispenser, a stack of membership forms: the litter of a working till.
+  place(root, box(0.1, 0.14, 0.1, 0x2f5aa8), 1.25, top + 0.07, staffZ + 0.1)
+  for (let i = 0; i < 4; i += 1) {
+    place(root, box(0.014, 0.16, 0.014, [0xd8232a, 0x1b1e25, 0x2e8b57, 0x2f5aa8][i] ?? 0x1b1e25), 1.22 + i * 0.02, top + 0.18, staffZ + 0.1)
+  }
+  place(root, box(0.18, 0.09, 0.12, 0x3a3f48), 1.6, top + 0.045, staffZ + 0.16)
+  place(root, box(0.26, 0.04, 0.2, 0xefe9d8), -0.5, top + 0.02, staffZ + 0.1)
+  place(root, box(0.12, 0.025, 0.12, 0xf0d24a), -0.15, top + 0.012, staffZ + 0.3)
+
+  // The till itself, dead centre where the customer expects it: a beige box with a raised
+  // display, a blue keypad and a drawer that never sat quite flush.
+  const tillX = 0.05
+  place(root, box(0.52, 0.3, 0.44, BEIGE), tillX, top + 0.15, staffZ - 0.02)
+  place(root, box(0.3, 0.16, 0.06, BEIGE_DARK), tillX, top + 0.38, staffZ + 0.12)
+  const tillScreen = panel(0.24, 0.1, { color: 0x7fd08a, unlit: true })
+  tillScreen.position.set(tillX, top + 0.38, staffZ + 0.15)
+  root.add(tillScreen)
+  place(root, box(0.34, 0.1, 0.26, 0x2f5aa8), tillX, top + 0.33, staffZ - 0.1)
+  place(root, box(0.5, 0.06, 0.05, BEIGE_DARK), tillX, top + 0.08, staffZ - 0.25)
+
+  // A spike of rental slips and a stack of paper bags, which is what the till sat between.
+  place(root, box(0.1, 0.02, 0.1, 0x6b6459), tillX + 0.45, top + 0.02, staffZ + 0.18)
+  place(root, box(0.01, 0.16, 0.01, 0x9aa0a4), tillX + 0.45, top + 0.1, staffZ + 0.18)
+  place(root, box(0.09, 0.06, 0.09, 0xefe9d8), tillX + 0.45, top + 0.06, staffZ + 0.18)
+  place(root, box(0.3, 0.09, 0.22, 0xc6b58a), -1.2, top + 0.05, staffZ + 0.3)
+
+  // The boombox on the end of the wing, which is what the radio in this room is coming out of.
+  place(root, box(0.5, 0.26, 0.22, 0x2b2f36), halfWidth - 0.45, top + 0.13, backZ - 0.35)
+  for (const dx of [-0.14, 0.14]) {
+    const cone = panel(0.16, 0.16, { color: 0x4a5058, unlit: true })
+    cone.position.set(halfWidth - 0.45 + dx, top + 0.13, backZ - 0.24)
+    root.add(cone)
+  }
+  place(root, box(0.16, 0.08, 0.02, 0x14171d), halfWidth - 0.45, top + 0.13, backZ - 0.24)
+
+  // Customer side: the impulse rack of candy at the till, and the sign-up clipboard.
+  place(root, box(0.34, 0.06, 0.34, 0xd8232a), 1.15, top + 0.03, customerZ)
+  for (let i = 0; i < 9; i += 1) {
+    place(root, box(0.06, 0.12, 0.04, [0xf5c518, 0x8e44ad, 0x2e8b57][i % 3] ?? 0xf5c518), 1.02 + (i % 3) * 0.07, top + 0.11, customerZ - 0.07 + Math.floor(i / 3) * 0.07)
+  }
+  place(root, box(0.28, 0.02, 0.36, 0x8d7a58), -0.55, top + 0.01, customerZ)
+  place(root, box(0.24, 0.01, 0.32, 0xf0ecdd), -0.55, top + 0.025, customerZ)
+
+  // A rewind placard standing on the customer face of the bar, because of course there was one.
+  place(root, box(0.6, 0.22, 0.03, BRAND.yellow), -1.9, top + 0.13, customerZ - 0.04)
+  const placard = panel(0.58, 0.2, {
+    map: signTexture('Be Kind Rewind', { background: BRAND.yellow, color: BRAND.blueDark, aspect: 2.9 }),
+    unlit: true,
+  })
+  placard.position.set(-1.9, top + 0.13, customerZ - 0.058)
+  placard.rotation.y = Math.PI
+  root.add(placard)
+}
+
+/**
+ * The back wall to the right of the release rack was eight metres of bare mustard, which is
+ * the one part of the room that still read as a model rather than a shop. It gets what that
+ * stretch of wall actually carried: a staff-picks board, a pair of framed one-sheets, the
+ * clock everybody watched from the counter, and a rewind reminder in the signage band.
+ */
+function buildBackWall({ root, interactables }: Build): void {
+  const wallZ = STORE.minZ + 0.06
+
+  // --- Staff picks: a corkboard of hand-chosen sleeves with the clerk's card under each ---
+  const boardX = 5.9
+  place(root, box(3.1, 1.55, 0.07, 0x9a7d4e), boardX, 1.62, wallZ)
+  place(root, box(3.26, 0.08, 0.1, ROOM.shelfTrim), boardX, 2.44, wallZ)
+
+  const header = panel(3.26, 0.34, {
+    map: signTexture('Staff Picks', { background: BRAND.blue, aspect: 3.26 / 0.34 }),
+    unlit: true,
+  })
+  header.position.set(boardX, 2.7, wallZ + 0.05)
+  root.add(header)
+  place(root, box(3.26, 0.4, 0.09, BRAND.blue), boardX, 2.7, wallZ)
+
+  const picks = CATALOG.filter((title) => !title.newRelease).slice(0, 6)
+  picks.forEach((title, index) => {
+    const column = index % 3
+    const row = Math.floor(index / 3)
+    const x = boardX - 1 + column * 1
+    const y = 2.02 - row * 0.74
+
+    const sleeve = panel(0.44, 0.62, { map: boxArtTexture(title) })
+    sleeve.position.set(x, y, wallZ + 0.05)
+    // A couple of degrees off square each, because nobody ever pinned one of these up straight.
+    sleeve.rotation.z = ((index % 3) - 1) * 0.035
+    root.add(sleeve)
+    interactables.push({ object: sleeve, label: `Read ${title.title}`, kind: 'inspect', title })
+
+    place(root, box(0.3, 0.09, 0.02, 0xefe9d8), x, y - 0.38, wallZ + 0.05)
+  })
+
+  // --- Two framed one-sheets, the pair that faced you walking the back of the store ---
+  hangPoster(root, 'shriek', 9.3, 2.1, wallZ + 0.03, 0)
+  hangPoster(root, 'lizard-park', 10.9, 2.1, wallZ + 0.03, 0)
+
+  // --- The clock. Every shift in one of these was measured against it. ---
+  const clockX = 8.2
+  const clockY = 2.95
+  place(root, box(0.62, 0.62, 0.08, 0x2b2f38), clockX, clockY, wallZ)
+  const dial = panel(0.5, 0.5, { color: 0xf2eddc, unlit: true })
+  dial.position.set(clockX, clockY, wallZ + 0.05)
+  root.add(dial)
+  for (let i = 0; i < 12; i += 1) {
+    const angle = (i / 12) * Math.PI * 2
+    place(root, unlitBox(0.02, 0.04, 0.01, 0x2b2f38), clockX + Math.sin(angle) * 0.2, clockY + Math.cos(angle) * 0.2, wallZ + 0.06)
+  }
+  // Hands parked at six, which is when the shift starts.
+  const hour = unlitBox(0.02, 0.13, 0.01, 0x2b2f38)
+  place(root, hour, clockX, clockY - 0.065, wallZ + 0.07)
+  const minute = unlitBox(0.018, 0.19, 0.01, 0x2b2f38)
+  place(root, minute, clockX, clockY + 0.095, wallZ + 0.07)
+
+  // --- The reminder, printed into the band under the ceiling ---
+  const rewindSign = panel(4.4, 0.3, {
+    map: signTexture('Be Kind \u00b7 Please Rewind', { background: BRAND.blue, aspect: 4.4 / 0.3, rule: false }),
+    unlit: true,
+  })
+  rewindSign.position.set(7.4, STORE.height - 0.18, STORE.minZ + 0.12)
+  root.add(rewindSign)
+
+  // --- A drop-off slot in the wall, because the bin by the counter is the after-hours one ---
+  place(root, box(1.4, 0.9, 0.12, ROOM.shelfBody), 3.9, 1.05, wallZ)
+  place(root, box(1.0, 0.16, 0.06, 0x14171d), 3.9, 1.22, wallZ + 0.08)
+  const slotSign = panel(1.4, 0.22, {
+    map: signTexture('Returns', { background: BRAND.yellow, color: BRAND.blueDark, aspect: 1.4 / 0.22 }),
+    unlit: true,
+  })
+  slotSign.position.set(3.9, 0.78, wallZ + 0.08)
+  root.add(slotSign)
 }
 
 /**
  * One-sheets in marquee frames. The bulbs are a single merged mesh per poster — a ring of
  * thirty little unlit boxes is free that way, and individually it would not be.
  */
-function buildPosters({ root }: Build): void {
-  const WIDTH = 0.68
-  const HEIGHT = 1.02
+const POSTER = { width: 0.68, height: 1.02 } as const
 
-  const hang = (id: PosterId, x: number, z: number, rotY: number): void => {
+/** One framed one-sheet with its ring of bulbs, hung flat against whichever wall. */
+function hangPoster(root: THREE.Group, id: PosterId, x: number, y: number, z: number, rotY: number): void {
+  {
+    const WIDTH = POSTER.width
+    const HEIGHT = POSTER.height
     const group = new THREE.Group()
 
     group.add(box(WIDTH + 0.22, HEIGHT + 0.22, 0.06, 0x14203f))
@@ -727,15 +986,17 @@ function buildPosters({ root }: Build): void {
     for (const geometry of bulbs) geometry.dispose()
     if (merged) group.add(new THREE.Mesh(merged, createPS1Material({ color: 0xfff0b8, unlit: true })))
 
-    group.position.set(x, 2.5, z)
+    group.position.set(x, y, z)
     group.rotation.y = rotY
     root.add(group)
   }
+}
 
-  hang('hard-to-perish', STORE.minX + 0.16, -5.4, Math.PI / 2)
-  hang('lizard-park', STORE.minX + 0.16, 0.4, Math.PI / 2)
-  hang('shriek', STORE.maxX - 0.16, -5.4, -Math.PI / 2)
-  hang('ogre-it', STORE.maxX - 0.16, 0.4, -Math.PI / 2)
+function buildPosters({ root }: Build): void {
+  hangPoster(root, 'hard-to-perish', STORE.minX + 0.16, 2.5, -5.4, Math.PI / 2)
+  hangPoster(root, 'lizard-park', STORE.minX + 0.16, 2.5, 0.4, Math.PI / 2)
+  hangPoster(root, 'shriek', STORE.maxX - 0.16, 2.5, -5.4, -Math.PI / 2)
+  hangPoster(root, 'ogre-it', STORE.maxX - 0.16, 2.5, 0.4, -Math.PI / 2)
 }
 
 /** The small stuff that makes a room look occupied rather than modelled. */

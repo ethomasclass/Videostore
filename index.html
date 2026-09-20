@@ -21,6 +21,10 @@
         <div id="hud-tasks"></div>
         <div id="hud-crosshair"></div>
         <div id="hud-prompt" hidden></div>
+        <div id="hud-speech" hidden>
+          <span id="speech-name"></span>
+          <p id="speech-text"></p>
+        </div>
       </div>
 
             <aside id="terminal" hidden>
@@ -59,15 +63,18 @@
         <button id="btn-start" type="button">Clock In</button>
         <ul class="controls" id="controls-desktop">
           <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move</li>
-          <li><kbd>Mouse</kbd> look</li>
-          <li><kbd>E</kbd> interact</li>
-          <li><kbd>Esc</kbd> release cursor</li>
+          <li>Drag to look</li>
+          <li><kbd>E</kbd> interact, read a box, talk</li>
+          <li><kbd>Shift</kbd> run</li>
+          <li><kbd>M</kbd> mute the store radio</li>
+          <li><kbd>V</kbd> cycle the look</li>
         </ul>
         <ul class="controls" id="controls-touch">
           <li>Left thumb to move</li>
           <li>Right thumb to look</li>
           <li><b>E</b> button to interact</li>
         </ul>
+        <p class="tagline">Pull a case off the New Release wall, then go talk to somebody.</p>
       </section>
 
       <section id="screen-report" class="screen" hidden>

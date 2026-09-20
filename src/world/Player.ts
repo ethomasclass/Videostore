@@ -23,6 +23,19 @@ export class Player {
   private bobPhase = 0
   frozen = false
 
+  /** Dev-only: drop the player somewhere, facing something. Scripted art passes need this. */
+  teleport(x: number, z: number, yaw: number, pitch = 0): void {
+    this.position.set(x, EYE_HEIGHT, z)
+    this.velocity.set(0, 0, 0)
+    this.yaw = yaw
+    this.pitch = THREE.MathUtils.clamp(pitch, -PITCH_LIMIT, PITCH_LIMIT)
+  }
+
+  /** Read by the dev probe, so scripted playtests can steer instead of dead-reckoning. */
+  get heading(): number {
+    return this.yaw
+  }
+
   get isMoving(): boolean {
     return this.velocity.lengthSq() > 0.05
   }

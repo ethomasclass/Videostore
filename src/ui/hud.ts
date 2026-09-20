@@ -20,6 +20,9 @@ export class Hud {
   private readonly reportLines = need('report-lines')
   private readonly reportVerdict = need('report-verdict')
   private readonly interactButton = need('btn-interact')
+  private readonly speech = need('hud-speech')
+  private readonly speechName = need('speech-name')
+  private readonly speechText = need('speech-text')
   private readonly casePanel = need('case-panel')
   private readonly caseTitle = need('case-title')
   private readonly caseTagline = need('case-tagline')
@@ -132,6 +135,17 @@ export class Hud {
     const dismissed = this.caseWasDismissed
     this.caseWasDismissed = false
     return dismissed
+  }
+
+  /** A customer said something. It hangs around for a few seconds and clears itself. */
+  showSpeech(name: string, text: string): void {
+    this.speechName.textContent = name
+    this.speechText.textContent = text
+    this.speech.hidden = false
+  }
+
+  hideSpeech(): void {
+    this.speech.hidden = true
   }
 
   setJobs(jobs: readonly Job[]): void {
