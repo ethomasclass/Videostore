@@ -150,7 +150,7 @@ export class Customer {
     // box: one shader material per mesh is the deal everywhere else in this project.
     this.face = new THREE.Mesh(
       new THREE.PlaneGeometry(0.26, 0.28),
-      createPS1Material({ map: faceTexture('curtains') }),
+      createPS1Material({ map: faceTexture('curtains'), decal: true }),
     )
     this.face.position.set(0, 1.54, 0.132)
     this.root.add(this.face)

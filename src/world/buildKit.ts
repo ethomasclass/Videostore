@@ -53,8 +53,16 @@ export function hitbox(width: number, height: number, depth: number): THREE.Mesh
   return mesh
 }
 
+/**
+ * A flat quad. Almost every one of these in the store is laid against something else — signage
+ * on a board, art on a case, a screen in its bezel — so they are depth-biased by default and
+ * the few that stand alone can opt out.
+ */
 export function panel(width: number, height: number, options: PS1MaterialOptions): THREE.Mesh {
-  return new THREE.Mesh(new THREE.PlaneGeometry(width, height), createPS1Material(options))
+  return new THREE.Mesh(
+    new THREE.PlaneGeometry(width, height),
+    createPS1Material({ decal: true, ...options }),
+  )
 }
 
 /** Places a mesh by its center and returns a collider for it. */

@@ -47,10 +47,14 @@ export class Hud {
 
   private readonly soundButton = need('btn-sound')
   private readonly fidelityButton = need('btn-fidelity')
+  private readonly chatterButton = need('btn-chatter')
+  /** Whether a line is live, as opposed to whether its bubble is currently on screen. */
+  private speechActive = false
 
   onStart: (() => void) | null = null
   onToggleSound: (() => void) | null = null
   onCycleFidelity: (() => void) | null = null
+  onToggleChatter: (() => void) | null = null
 
   constructor() {
     need('btn-start').addEventListener('click', () => this.onStart?.())
@@ -60,11 +64,17 @@ export class Hud {
     })
     this.soundButton.addEventListener('click', () => this.onToggleSound?.())
     this.fidelityButton.addEventListener('click', () => this.onCycleFidelity?.())
+    this.chatterButton.addEventListener('click', () => this.onToggleChatter?.())
   }
 
   setSoundMuted(muted: boolean): void {
     this.soundButton.textContent = muted ? 'Music off (M)' : 'Music on (M)'
     this.soundButton.classList.toggle('muted', muted)
+  }
+
+  setChatterEnabled(enabled: boolean): void {
+    this.chatterButton.textContent = enabled ? 'Chatter on (C)' : 'Chatter off (C)'
+    this.chatterButton.classList.toggle('muted', !enabled)
   }
 
   setFidelityLabel(label: string): void {
@@ -144,10 +154,12 @@ export class Hud {
   showSpeech(name: string, text: string): void {
     this.speechName.textContent = name
     this.speechText.textContent = text
+    this.speechActive = true
     this.speech.hidden = false
   }
 
   hideSpeech(): void {
+    this.speechActive = false
     this.speech.hidden = true
   }
 
@@ -156,8 +168,12 @@ export class Hud {
    * head, and the clamp keeps a bubble on screen when its owner is walking off the edge of it.
    */
   anchorSpeech(x: number, y: number, onScreen: boolean): void {
-    if (this.speech.hidden) return
-    this.speech.classList.toggle('offscreen', !onScreen)
+    if (!this.speechActive) return
+    // A line from someone you cannot see has nothing to point at, and a bubble parked in the
+    // middle of the screen with no owner is just something in the way. It comes back by
+    // itself if you turn around while they are still talking.
+    this.speech.hidden = !onScreen
+    if (!onScreen) return
     const width = this.speech.offsetWidth
     const margin = 12
     const clampedX = Math.max(width / 2 + margin, Math.min(window.innerWidth - width / 2 - margin, x))
@@ -172,7 +188,13 @@ export class Hud {
    * anything off, it can only make things vanish, which is the opposite of satisfying.
    */
   setJobs(jobs: readonly Job[]): void {
-    const visible = [...jobs].sort((a, b) => a.timeLeft - b.timeLeft).slice(0, 4)
+    // Most urgent first, capped, with the standing jobs kept at the bottom whatever happens —
+    // the shipment has all night left on it, so by urgency alone it would never be on screen.
+    const pinned = jobs.filter((job) => job.pinned)
+    const visible = [
+      ...jobs.filter((job) => !job.pinned).sort((a, b) => a.timeLeft - b.timeLeft).slice(0, 4),
+      ...pinned,
+    ]
     const seen = new Set<number>()
 
     for (const job of visible) {
@@ -187,7 +209,10 @@ export class Hud {
       if (text && text.textContent !== job.label) text.textContent = job.label
       row.classList.toggle('urgent', job.timeLeft < 20)
       const bar = row.querySelector<HTMLElement>('.task-bar span')
-      if (bar) bar.style.width = `${Math.max(0, Math.min(1, job.timeLeft / job.patience)) * 100}%`
+      // A standing job has no deadline to draw, so it shows how much of it is done instead of
+      // a bar that never moves.
+      if (bar && !job.pinned) bar.style.width = `${Math.max(0, Math.min(1, job.timeLeft / job.patience)) * 100}%`
+      if (job.pinned) row.classList.add('standing')
     }
 
     // Anything gone from the board that was not resolved explicitly just leaves.
@@ -217,10 +242,19 @@ export class Hud {
 
     const bar = document.createElement('div')
     bar.className = 'task-bar'
-    bar.append(document.createElement('span'))
+    const fill = document.createElement('span')
+    // A deadline bar starts full and drains; a standing job's bar starts empty and fills.
+    if (job.pinned) fill.style.width = '0%'
+    bar.append(fill)
 
     row.append(check, text, bar)
     return row
+  }
+
+  /** Fills a standing job's bar by how much of it is done rather than how long is left. */
+  setJobProgress(id: number, fraction: number): void {
+    const bar = this.taskRows.get(id)?.querySelector<HTMLElement>('.task-bar span')
+    if (bar) bar.style.width = `${Math.max(0, Math.min(1, fraction)) * 100}%`
   }
 
   /**

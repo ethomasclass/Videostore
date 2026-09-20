@@ -5,7 +5,7 @@ import { buildStore, SPAWN, type BuiltStore, type Interactable } from '../world/
 import type { Title } from '../data/catalog'
 import { Player } from '../world/Player'
 import { Input } from './Input'
-import { ShiftClock } from './Clock'
+import { ShiftClock, SHIFT } from './Clock'
 import { JobBoard } from '../sim/Tasks'
 import { Scorecard, VERDICT_COPY } from '../sim/Scorecard'
 import { Hud } from '../ui/hud'
@@ -16,6 +16,7 @@ import { Hands } from '../world/Hands'
 import { Customer } from '../sim/Customer'
 import type { StationKind } from '../world/Store'
 import { GENRE_LABEL } from '../data/catalog'
+import { SHIPMENT_SIZE } from '../world/Crate'
 
 type Phase = 'title' | 'shift' | 'report'
 
@@ -23,7 +24,7 @@ type Phase = 'title' | 'shift' | 'report'
 type Target = Interactable | { kind: 'talk'; label: string }
 
 /** How long a spoken line stays up. Long enough to read, short enough not to nag. */
-const speechDuration = (text: string): number => Math.min(9, 3.2 + text.length * 0.035)
+const speechDuration = (text: string): number => Math.min(5.5, 2.4 + text.length * 0.03)
 
 const INTERACT_RANGE = 2.4
 const MAX_DT = 1 / 20
@@ -59,6 +60,8 @@ export class Game {
   /** The deck keeps running after the hands are done, so the job settles when it ejects. */
   private rewindPending = false
   private rewindJobId: number | null = null
+  /** The shipment crate's standing job, which lasts the whole shift. */
+  private shipmentJobId: number | null = null
   /** A quick downward nod on the camera when something lands. Decays to nothing. */
   private kick = 0
   /** 0 at the player's own eyes, 1 parked in front of the terminal's CRT. */
@@ -68,6 +71,8 @@ export class Game {
   private readonly interactObjects: THREE.Object3D[]
   /** Counts down whatever the customer last said. */
   private speechLeft = 0
+  /** Customer chatter can be switched off outright — it is flavour, not information. */
+  private chatter = true
   private readonly byObject = new Map<THREE.Object3D, Interactable>()
 
   constructor(canvas: HTMLCanvasElement) {
@@ -104,6 +109,8 @@ export class Game {
     this.hud.onStart = () => this.startShift()
     this.hud.onToggleSound = () => this.hud.setSoundMuted(this.radio.toggleMute())
     this.hud.onCycleFidelity = () => this.cycleFidelity()
+    this.hud.onToggleChatter = () => this.toggleChatter()
+    this.hud.setChatterEnabled(this.chatter)
     this.hud.setFidelityLabel(FIDELITY_LABEL[this.fidelity])
     this.hud.showTitle()
 
@@ -112,6 +119,15 @@ export class Game {
     canvas.addEventListener('click', () => {
       if (this.phase === 'shift') this.input.requestLock()
     })
+  }
+
+  private toggleChatter(): void {
+    this.chatter = !this.chatter
+    this.hud.setChatterEnabled(this.chatter)
+    if (!this.chatter) {
+      this.hud.hideSpeech()
+      this.speechLeft = 0
+    }
   }
 
   private cycleFidelity(): void {
@@ -147,6 +163,12 @@ export class Game {
     this.rewindPending = false
     this.rewindJobId = null
     this.kick = 0
+
+    // The shipment is on the board from clock-in and stays there: it never times out, it just
+    // sits in the corner all night being the thing you have not got to yet.
+    this.store.crate.reset()
+    this.scorecard.shipmentTotal = SHIPMENT_SIZE
+    this.shipmentJobId = this.jobs.addJob('restock', this.shipmentLabel(), SHIFT.realSeconds + 120, true)
     this.monitorZoom = 0
     this.phase = 'shift'
     this.hud.showShift()
@@ -191,6 +213,7 @@ export class Game {
     this.updateSpeech(dt)
 
     this.store.rewinder.update(dt, this.sfx)
+    this.store.crate.update(dt)
     if (this.rewindPending && !this.store.rewinder.isRunning) {
       this.rewindPending = false
       this.settleJob(this.rewindJobId, 'Rewound')
@@ -216,6 +239,7 @@ export class Game {
 
         if (this.input.consumeMuteToggle()) this.hud.setSoundMuted(this.radio.toggleMute())
         if (this.input.consumeFidelityToggle()) this.cycleFidelity()
+        if (this.input.consumeChatterToggle()) this.toggleChatter()
 
         if (this.input.consumeInteract() && target) {
           if (target.kind === 'station') this.beginStation(target)
@@ -242,6 +266,8 @@ export class Game {
         yaw: Number(this.player.heading.toFixed(3)),
         customer: this.customer.state,
         rewinding: this.store.rewinder.isRunning,
+        hands: this.hands.held,
+        crate: this.store.crate.remaining,
         zoom: Number(this.monitorZoom.toFixed(2)),
       }
     }
@@ -268,6 +294,12 @@ export class Game {
           : null,
       )
       this.input.releaseLock()
+      return
+    }
+
+    // The crate is two actions at one station: getting it open, then working through it.
+    if (station === 'restock') {
+      this.workCrate()
       return
     }
 
@@ -303,17 +335,69 @@ export class Game {
         this.sfx.shelfPlace(0.6)
         break
       case 'rewind':
-        // Load the tape, then walk away — the deck finishes on its own time.
+        // Load the tape, then walk away — the deck finishes on its own time. The deck holds
+        // its flap open until the hands have the tape out of its sleeve.
         this.sfx.deckOpen()
-        this.store.rewinder.start()
+        this.store.rewinder.start(this.hands.loadReach)
         this.rewindPending = true
         this.rewindJobId = jobId
         break
       case 'returns':
-      case 'restock':
         this.sfx.thud(0.35)
         break
     }
+  }
+
+  private shipmentLabel(): string {
+    const left = this.store.crate.remaining
+    return left === 0 ? 'Shipment is out' : `Put out the shipment (${SHIPMENT_SIZE - left}/${SHIPMENT_SIZE})`
+  }
+
+  /**
+   * One press opens the box; every press after that takes one tape out of it and raises the
+   * job to shelve that tape. The crate never expires, so it is the job that loses to every
+   * other job — which is exactly what makes it the interesting one to balance.
+   */
+  private workCrate(): void {
+    const crate = this.store.crate
+
+    if (crate.isEmpty) {
+      this.hud.showToast("Shipment's all out", 'good')
+      return
+    }
+
+    if (crate.open()) {
+      this.busy = { station: 'restock', timeLeft: this.hands.play('restock'), jobId: null }
+      this.player.frozen = true
+      this.sfx.thud(0.3)
+      this.hud.showToast('Crate open — start putting it out', 'good')
+      return
+    }
+
+    const title = crate.take()
+    this.busy = { station: 'restock', timeLeft: this.hands.play('stock'), jobId: null }
+    this.player.frozen = true
+    this.sfx.shelfPlace(0.45)
+    this.scorecard.shipmentStocked += 1
+
+    // Everything that comes out of the box has to go somewhere, which is the cost of doing it.
+    const followUp = title ? this.jobs.addFollowUp('shelf', title) : null
+
+    if (crate.isEmpty) {
+      this.settleJob(this.shipmentJobId, 'Whole shipment out')
+      this.shipmentJobId = null
+      return
+    }
+
+    if (this.shipmentJobId !== null) {
+      this.jobs.relabel(this.shipmentJobId, this.shipmentLabel())
+      this.hud.setJobProgress(this.shipmentJobId, this.scorecard.shipmentProgress)
+    }
+    this.hud.showToast(
+      followUp ? `${crate.remaining} left in the crate — and shelve that one` : `${crate.remaining} left in the crate`,
+      'good',
+    )
+    this.buzz(12)
   }
 
   /**
@@ -375,7 +459,10 @@ export class Game {
     // The register is settled by the terminal, and the rewinder settles when the deck ejects.
     if (finished.station === 'register' || finished.station === 'rewind') return
 
-    const verb = finished.station === 'shelf' ? 'Shelved' : finished.station === 'returns' ? 'Bin emptied' : 'Crate broken down'
+    // The crate settles itself as it empties, so nothing to credit when its animation ends.
+    if (finished.station === 'restock') return
+
+    const verb = finished.station === 'shelf' ? 'Shelved' : 'Bin emptied'
     this.settleJob(finished.jobId, verb)
   }
 
@@ -407,7 +494,7 @@ export class Game {
   /** Whatever the customer came out with goes straight to the HUD, and times itself out. */
   private updateSpeech(dt: number): void {
     const line = this.customer.consumeSpeech()
-    if (line) {
+    if (line && this.chatter) {
       this.hud.showSpeech(line.name, line.text)
       this.speechLeft = speechDuration(line.text)
       this.positionSpeech()

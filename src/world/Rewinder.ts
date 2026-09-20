@@ -31,6 +31,8 @@ export class Rewinder {
   private phase: Phase = 'idle'
   private elapsed = 0
   private spin = 0
+  /** Extra seconds the flap stays open before the tape slides in. */
+  private openHold = 0
 
   constructor() {
     const body = new THREE.Mesh(
@@ -85,24 +87,30 @@ export class Rewinder {
     return this.phase !== 'idle'
   }
 
-  /** Returns the full cycle length, so the caller can time the job around it. */
-  start(): number {
+  /**
+   * Returns the full cycle length, so the caller can time the job around it. `holdOpen` keeps
+   * the flap waiting: the player's hands have a case to open and a tape to pull out of it
+   * first, and the deck should not swallow a tape that is not there yet.
+   */
+  start(holdOpen = 0): number {
     if (this.phase !== 'idle') return 0
     this.phase = 'open'
     this.elapsed = 0
-    return TIMINGS.open + TIMINGS.insert + TIMINGS.spin + TIMINGS.eject
+    this.openHold = Math.max(0, holdOpen)
+    return TIMINGS.open + this.openHold + TIMINGS.insert + TIMINGS.spin + TIMINGS.eject
   }
 
   update(dt: number, sfx: Sfx): void {
     if (this.phase === 'idle') return
     this.elapsed += dt
 
-    const limit = TIMINGS[this.phase]
+    const limit = TIMINGS[this.phase] + (this.phase === 'open' ? this.openHold : 0)
     const t = Math.min(this.elapsed / limit, 1)
 
     switch (this.phase) {
       case 'open':
-        this.flapHinge.rotation.x = ease(t) * 1.15
+        // The flap drops at its own speed and then just waits, however long the hold is.
+        this.flapHinge.rotation.x = ease(Math.min(this.elapsed / TIMINGS.open, 1)) * 1.15
         if (t >= 1) this.advance('insert', sfx)
         break
 

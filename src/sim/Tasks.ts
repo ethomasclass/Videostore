@@ -10,6 +10,8 @@ export interface Job {
   timeLeft: number
   /** What timeLeft started at, so the board can draw how far gone a job is. */
   patience: number
+  /** Always shown on the board, whatever else is more urgent. The shipment is the only one. */
+  pinned?: boolean
   title?: Title
 }
 
@@ -19,7 +21,7 @@ const TEMPLATES: Record<StationKind, { label: (title: Title) => string; patience
   // The genre is the job: a tape only counts as shelved if it goes back to its own section.
   shelf: { label: (t) => `Shelve ${t.title} \u2014 ${GENRE_LABEL[t.genre]}`, patience: 110 },
   register: { label: () => 'Customer waiting at the register', patience: 45 },
-  restock: { label: () => 'Break down the shipment crate', patience: 150 },
+  restock: { label: () => 'Put out the shipment', patience: 150 },
 }
 
 const pickTitle = (): Title => {
@@ -77,10 +79,16 @@ export class JobBoard {
   }
 
   /** Work raised by something in the world rather than by the spawner — a customer, say. */
-  addJob(kind: StationKind, label: string, patience: number): number {
+  addJob(kind: StationKind, label: string, patience: number, pinned = false): number {
     const id = this.nextId++
-    this.jobs.push({ id, kind, label, timeLeft: patience, patience })
+    this.jobs.push({ id, kind, label, timeLeft: patience, patience, pinned })
     return id
+  }
+
+  /** Renames a job in place — the shipment counts itself down as you empty the box. */
+  relabel(id: number, label: string): void {
+    const job = this.jobs.find((entry) => entry.id === id)
+    if (job) job.label = label
   }
 
   hasJob(id: number): boolean {
@@ -123,8 +131,10 @@ export class JobBoard {
   private spawn(): void {
     // No 'register' here: a customer at the counter raises that job, so spawning it at random
     // would put a queue on the board with nobody standing in it.
-    const kinds: StationKind[] = ['rewind', 'shelf', 'returns', 'restock']
-    const weights = [3, 3, 1, 1]
+    // No 'restock' either: the shipment crate is a standing job raised at clock-in, not
+    // something that turns up twice an hour.
+    const kinds: StationKind[] = ['rewind', 'shelf', 'returns']
+    const weights = [3, 3, 1]
     const total = weights.reduce((sum, weight) => sum + weight, 0)
     let roll = Math.random() * total
     let kind: StationKind = 'rewind'

@@ -12,6 +12,7 @@ import { box, unlitBox, hitbox, panel, place, DOORS, FRONT_SOLID_HALF, STORE, VH
 import { buildParkingLot, buildStorefront } from './exterior'
 import { carpetTexture, lightPoolTexture, tileTexture } from '../render/carpetTexture'
 import { Rewinder } from './Rewinder'
+import { Crate } from './Crate'
 
 export { STORE } from './buildKit'
 
@@ -36,6 +37,7 @@ export interface BuiltStore {
   colliders: THREE.Box3[]
   interactables: Interactable[]
   rewinder: Rewinder
+  crate: Crate
   /** Where the camera sits, and what it looks at, when the player is on the terminal. */
   monitorView: { position: THREE.Vector3; target: THREE.Vector3 }
 }
@@ -89,6 +91,7 @@ interface Build {
   interactables: Interactable[]
   addItem: (color: number, x: number, y: number, z: number, item: Item) => void
   rewinder: Rewinder
+  crate: Crate
   monitorView: { position: THREE.Vector3; target: THREE.Vector3 }
 }
 
@@ -125,6 +128,7 @@ export function buildStore(): BuiltStore {
     interactables,
     addItem,
     rewinder: new Rewinder(),
+    crate: new Crate(),
     monitorView: { position: new THREE.Vector3(), target: new THREE.Vector3() },
   }
 
@@ -146,7 +150,14 @@ export function buildStore(): BuiltStore {
     if (merged) root.add(new THREE.Mesh(merged, createPS1Material({ color })))
   }
 
-  return { root, colliders, interactables, rewinder: build.rewinder, monitorView: build.monitorView }
+  return {
+    root,
+    colliders,
+    interactables,
+    rewinder: build.rewinder,
+    crate: build.crate,
+    monitorView: build.monitorView,
+  }
 }
 
 function buildShell({ root, colliders }: Build): void {
@@ -251,10 +262,10 @@ function buildShell({ root, colliders }: Build): void {
     ),
   )
 
-  const troffer = createPS1Material({ color: ROOM.light, unlit: true })
+  const troffer = createPS1Material({ color: ROOM.light, unlit: true, decal: true })
   // Pools of light laid on the carpet under each fixture. The lighting model is per-vertex with
   // no falloff, so without these the floor takes one flat value and the troffers light nothing.
-  const poolMaterial = createPS1Material({ map: lightPoolTexture(), unlit: true, opacity: 0.22 })
+  const poolMaterial = createPS1Material({ map: lightPoolTexture(), unlit: true, opacity: 0.22, decal: true })
   poolMaterial.blending = THREE.AdditiveBlending
   poolMaterial.depthWrite = false
 
@@ -617,7 +628,7 @@ function buildNewReleaseWall({ root, interactables }: Build): void {
   const mergeTags = (geometries: THREE.BufferGeometry[], color: number): void => {
     const merged = mergeGeometries(geometries, false)
     for (const geometry of geometries) geometry.dispose()
-    if (merged) root.add(new THREE.Mesh(merged, createPS1Material({ color })))
+    if (merged) root.add(new THREE.Mesh(merged, createPS1Material({ color, decal: true })))
   }
   mergeTags(tags, ROOM.tag)
   mergeTags(hotTags, BRAND.yellow)
@@ -713,7 +724,8 @@ function buildCounter(build: Build): void {
   for (const x of [-3.6, 3.6] as const) {
     place(root, box(0.9, 0.7, 0.5, 0x2b2b31), x, 1.6, face - 0.25)
     const screen = panel(0.66, 0.5, { color: 0x6f8fb8, unlit: true })
-    screen.position.set(x, 1.62, face - 0.5)
+    // Clear of the cabinet's own front face rather than exactly on it.
+    screen.position.set(x, 1.62, face - 0.515)
     screen.rotation.y = Math.PI
     root.add(screen)
   }
@@ -748,9 +760,15 @@ function buildCounter(build: Build): void {
   station('Check the return bin', 'returns', [1.3, 1.5, 1.2], [-halfWidth - 0.6, 0.7, frontZ + 0.6])
 
   // Against the feature wall in the corner, off the staff walkway it used to sit in.
-  const crate = box(0.8, 0.5, 0.6, 0x7d6a4f)
-  colliders.push(place(root, crate, -4.3, 0.25, FEATURE_WALL_Z - 0.62))
-  station('Open the shipment crate', 'restock', [1.3, 1.3, 1.1], [-4.3, 0.55, FEATURE_WALL_Z - 0.62])
+  build.crate.root.position.set(-4.3, 0, FEATURE_WALL_Z - 0.68)
+  root.add(build.crate.root)
+  colliders.push(
+    new THREE.Box3(
+      new THREE.Vector3(-4.75, 0, FEATURE_WALL_Z - 1),
+      new THREE.Vector3(-3.85, 0.5, FEATURE_WALL_Z - 0.36),
+    ),
+  )
+  station('Work the shipment crate', 'restock', [1.4, 1.5, 1.2], [-4.3, 0.6, FEATURE_WALL_Z - 0.68])
 
   // --- The terminal: a whole beige computer, facing the staff side of the counter ---
   const monitorX = -1.3
@@ -847,7 +865,7 @@ function buildCounter(build: Build): void {
   place(root, box(0.52, 0.3, 0.44, BEIGE), tillX, top + 0.15, staffZ - 0.02)
   place(root, box(0.3, 0.16, 0.06, BEIGE_DARK), tillX, top + 0.38, staffZ + 0.12)
   const tillScreen = panel(0.24, 0.1, { color: 0x7fd08a, unlit: true })
-  tillScreen.position.set(tillX, top + 0.38, staffZ + 0.15)
+  tillScreen.position.set(tillX, top + 0.38, staffZ + 0.155)
   root.add(tillScreen)
   place(root, box(0.34, 0.1, 0.26, 0x2f5aa8), tillX, top + 0.33, staffZ - 0.1)
   place(root, box(0.5, 0.06, 0.05, BEIGE_DARK), tillX, top + 0.08, staffZ - 0.25)

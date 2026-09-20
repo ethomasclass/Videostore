@@ -29,7 +29,10 @@ export const FIDELITY_LABEL: Record<Fidelity, string> = {
 
 const FIDELITY_SETTINGS: Record<Fidelity, { height: number; affine: number; jitter: number; dither: number }> = {
   ps1: { height: 240, affine: 1, jitter: 1, dither: 1 },
-  sharp: { height: 480, affine: 1, jitter: 1, dither: 1 },
+  // Snapping is scaled right down here. At 480 lines the grid is fine enough that full
+  // snapping reads as crawling edges rather than as hardware character, and it is what made
+  // every join in the room strobe.
+  sharp: { height: 480, affine: 1, jitter: 0.3, dither: 1 },
   crisp: { height: 0, affine: 0, jitter: 0, dither: 0 },
 }
 

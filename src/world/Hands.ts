@@ -10,8 +10,11 @@ import { BRAND } from '../render/palette'
  * and the same station with a second of animation in front of it reads as work.
  */
 
-/** Mirrors StationKind exactly: every station has exactly one animation. */
-export type HandAction = 'rewind' | 'shelf' | 'register' | 'returns' | 'restock'
+/**
+ * One per station, plus 'stock' — the crate is two different actions at the same station:
+ * getting the box open, and then taking things out of it one at a time.
+ */
+export type HandAction = 'rewind' | 'shelf' | 'register' | 'returns' | 'restock' | 'stock'
 
 type Vec3 = readonly [number, number, number]
 
@@ -22,30 +25,62 @@ interface Keyframe {
   rot: Vec3
 }
 
+type Prop = 'tape' | 'case'
+
 interface Clip {
   duration: number
   right: readonly Keyframe[]
   left?: readonly Keyframe[]
-  holds: 'tape' | 'case' | null
-  /** When the held prop disappears — the moment the tape goes into the deck, or onto the shelf. */
+  /** What the right hand starts the clip holding. */
+  holds: Prop | null
+  /** What the left hand starts the clip holding, for two-handed business. */
+  leftHolds?: Prop | null
+  /** When the right hand's prop disappears — into the deck, or onto the shelf. */
   releaseAt?: number
+  /** When the left hand's prop disappears. */
+  leftReleaseAt?: number
+  /** When a prop appears in the right hand mid-clip: the tape coming out of its sleeve. */
+  takesAt?: number
+  takes?: Prop
 }
 
 const REST_RIGHT: Vec3 = [0.29, -0.29, -0.54]
 const REST_LEFT: Vec3 = [-0.31, -0.31, -0.58]
 
 const CLIPS: Record<HandAction, Clip> = {
-  // Slot the tape into the deck, hold while it seats, withdraw.
+  /**
+   * The whole business, not just the last beat of it: the sleeve comes up in the left hand,
+   * the right hand opens it and draws the tape out, and only then does the tape go into the
+   * deck. Loading a tape that materialised in your fist was the part that read as a menu.
+   */
   rewind: {
-    duration: 1.25,
-    holds: 'tape',
-    releaseAt: 0.55,
+    duration: 2.1,
+    holds: null,
+    leftHolds: 'case',
+    takes: 'tape',
+    takesAt: 0.42,
+    releaseAt: 0.76,
+    leftReleaseAt: 0.93,
     right: [
       { t: 0, pos: REST_RIGHT, rot: [0, -0.2, 0] },
-      { t: 0.35, pos: [0.16, -0.26, -0.62], rot: [-0.3, -0.1, 0] },
-      { t: 0.55, pos: [0.14, -0.28, -0.74], rot: [-0.45, -0.05, 0] },
-      { t: 0.75, pos: [0.2, -0.3, -0.58], rot: [-0.2, -0.1, 0] },
+      { t: 0.2, pos: [0.22, -0.3, -0.58], rot: [-0.25, -0.15, 0] },
+      // Fingers on the sleeve, which the left hand is holding out in front.
+      { t: 0.36, pos: [-0.04, -0.29, -0.62], rot: [-0.3, -0.05, -0.15] },
+      // Draws the tape clear, off to the right.
+      { t: 0.55, pos: [0.2, -0.25, -0.58], rot: [-0.22, -0.12, 0.3] },
+      // And into the deck.
+      { t: 0.76, pos: [0.13, -0.28, -0.78], rot: [-0.48, -0.05, 0.05] },
+      { t: 0.88, pos: [0.22, -0.3, -0.6], rot: [-0.18, -0.1, 0] },
       { t: 1, pos: REST_RIGHT, rot: [0, -0.2, 0] },
+    ],
+    left: [
+      { t: 0, pos: REST_LEFT, rot: [0, 0.2, 0] },
+      { t: 0.2, pos: [-0.17, -0.27, -0.62], rot: [-0.28, 0.18, 0] },
+      // Holds it steady while the tape comes out, tipping it open a little.
+      { t: 0.42, pos: [-0.17, -0.27, -0.62], rot: [-0.34, 0.22, -0.12] },
+      { t: 0.6, pos: [-0.18, -0.28, -0.6], rot: [-0.3, 0.2, -0.1] },
+      { t: 0.85, pos: [-0.28, -0.34, -0.56], rot: [-0.05, 0.2, 0] },
+      { t: 1, pos: REST_LEFT, rot: [0, 0.2, 0] },
     ],
   },
   // Reach up and forward, push the case into the row, drop the arm.
@@ -83,6 +118,21 @@ const CLIPS: Record<HandAction, Clip> = {
       { t: 0, pos: REST_RIGHT, rot: [0, -0.2, 0] },
       { t: 0.35, pos: [0.24, -0.54, -0.5], rot: [0.4, -0.2, 0] },
       { t: 0.6, pos: [0.24, -0.46, -0.54], rot: [0.1, -0.2, 0] },
+      { t: 1, pos: REST_RIGHT, rot: [0, -0.2, 0] },
+    ],
+  },
+  // Reach down into the open box and come up with a sleeve.
+  stock: {
+    duration: 1.15,
+    holds: null,
+    takes: 'case',
+    takesAt: 0.45,
+    releaseAt: 0.97,
+    right: [
+      { t: 0, pos: REST_RIGHT, rot: [0, -0.2, 0] },
+      { t: 0.3, pos: [0.26, -0.58, -0.56], rot: [0.5, -0.2, 0] },
+      { t: 0.45, pos: [0.26, -0.62, -0.58], rot: [0.6, -0.2, 0] },
+      { t: 0.7, pos: [0.24, -0.34, -0.6], rot: [0.05, -0.2, 0] },
       { t: 1, pos: REST_RIGHT, rot: [0, -0.2, 0] },
     ],
   },
@@ -173,6 +223,8 @@ export class Hands {
   private readonly left = buildArm(-1)
   private readonly tape: THREE.Mesh
   private readonly case: THREE.Mesh
+  private readonly leftTape: THREE.Mesh
+  private readonly leftCase: THREE.Mesh
 
   private clip: Clip | null = null
   private elapsed = 0
@@ -198,8 +250,32 @@ export class Hands {
     this.case.visible = false
     this.right.anchor.add(this.case)
 
+    // The same two props again for the other hand. Cheaper than reparenting a single prop
+    // mid-clip, and it means both hands can hold something at once.
+    this.leftTape = this.tape.clone()
+    this.leftTape.material = createPS1Material({ color: 0x1b1b20 })
+    this.leftCase = this.case.clone()
+    this.leftCase.material = createPS1Material({ color: BRAND.blue })
+    this.left.anchor.add(this.leftTape, this.leftCase)
+
     this.applyPose(this.right.group, { pos: REST_RIGHT, rot: [0, -0.2, 0] })
     this.applyPose(this.left.group, { pos: REST_LEFT, rot: [0, 0.2, 0] })
+  }
+
+  /**
+   * How long into the rewind clip the tape actually reaches the deck. The deck waits this out
+   * with its flap open, so the two animations meet instead of talking over each other.
+   */
+  get loadReach(): number {
+    const clip = CLIPS.rewind
+    return clip.duration * (clip.releaseAt ?? 0.75) - 0.35
+  }
+
+  /** What is in each hand, for the dev probe: scripted tests cannot see the screen corners. */
+  get held(): string {
+    const name = (tape: THREE.Mesh, sleeve: THREE.Mesh): string =>
+      tape.visible ? 'tape' : sleeve.visible ? 'case' : '-'
+    return `${name(this.leftTape, this.leftCase)}/${name(this.tape, this.case)}`
   }
 
   get isBusy(): boolean {
@@ -212,6 +288,8 @@ export class Hands {
     this.elapsed = 0
     this.tape.visible = this.clip.holds === 'tape'
     this.case.visible = this.clip.holds === 'case'
+    this.leftTape.visible = this.clip.leftHolds === 'tape'
+    this.leftCase.visible = this.clip.leftHolds === 'case'
     return this.clip.duration
   }
 
@@ -223,13 +301,29 @@ export class Hands {
       this.applyPose(this.right.group, sample(this.clip.right, t))
       if (this.clip.left) this.applyPose(this.left.group, sample(this.clip.left, t))
 
+      // The tape leaving the sleeve, then the sleeve and the tape being put down: three
+      // moments, each just a prop blinking on or off under a hand that is already moving.
+      if (this.clip.takesAt !== undefined && t >= this.clip.takesAt) {
+        if (this.clip.takes === 'tape') this.tape.visible = true
+        if (this.clip.takes === 'case') this.case.visible = true
+      }
+
       if (this.clip.releaseAt !== undefined && t >= this.clip.releaseAt) {
         this.tape.visible = false
         this.case.visible = false
       }
 
+      if (this.clip.leftReleaseAt !== undefined && t >= this.clip.leftReleaseAt) {
+        this.leftTape.visible = false
+        this.leftCase.visible = false
+      }
+
       if (t >= 1) {
         this.clip = null
+        this.tape.visible = false
+        this.case.visible = false
+        this.leftTape.visible = false
+        this.leftCase.visible = false
         this.applyPose(this.right.group, { pos: REST_RIGHT, rot: [0, -0.2, 0] })
         this.applyPose(this.left.group, { pos: REST_LEFT, rot: [0, 0.2, 0] })
       }

@@ -125,6 +125,11 @@ export class Input {
     return this.consumeKey('KeyM')
   }
 
+  /** True once per press of C — turning customer chatter on and off. */
+  consumeChatterToggle(): boolean {
+    return this.consumeKey('KeyC')
+  }
+
   /** True once per press of V — cycling the visual fidelity. */
   consumeFidelityToggle(): boolean {
     return this.consumeKey('KeyV')

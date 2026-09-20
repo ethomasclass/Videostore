@@ -128,10 +128,25 @@ export interface PS1MaterialOptions {
   side?: THREE.Side
   /** Skips lighting entirely. Light fixtures and signage read as emissive, not shaded. */
   unlit?: boolean
+  /**
+   * Marks this as a surface laid on top of another one — a sign on a board, art on a case,
+   * a screen in a bezel. Vertex snapping quantizes positions to the framebuffer grid, which
+   * makes two near-coplanar faces swap order as the camera moves and strobe against each
+   * other. A depth bias settles the argument once instead of every frame.
+   */
+  decal?: boolean
 }
 
 export function createPS1Material(options: PS1MaterialOptions = {}): THREE.ShaderMaterial {
-  const { color = 0xffffff, map, opacity = 1, jitter = 1, side = THREE.FrontSide, unlit = false } = options
+  const {
+    color = 0xffffff,
+    map,
+    opacity = 1,
+    jitter = 1,
+    side = THREE.FrontSide,
+    unlit = false,
+    decal = false,
+  } = options
 
   const defines: Record<string, string> = {}
   if (map) defines.USE_PS1_MAP = ''
@@ -158,6 +173,12 @@ export function createPS1Material(options: PS1MaterialOptions = {}): THREE.Shade
       uFogFar: { value: FOG.far },
     },
   })
+
+  if (decal) {
+    material.polygonOffset = true
+    material.polygonOffsetFactor = -2
+    material.polygonOffsetUnits = -4
+  }
 
   material.userData.authoredJitter = jitter
   registry.add(material)

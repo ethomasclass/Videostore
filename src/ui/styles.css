@@ -148,6 +148,15 @@ body {
   transition: width 0.2s linear;
 }
 
+/* A job with no deadline: its bar fills up as you work through it. */
+.task.standing {
+  border-left-color: var(--brand-yellow);
+}
+
+.task.standing .task-bar span {
+  background: var(--good);
+}
+
 .task.urgent {
   border-left-color: var(--bad);
   animation: nag 0.8s steps(2, end) infinite;

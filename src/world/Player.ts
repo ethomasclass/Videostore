@@ -43,7 +43,9 @@ export class Player {
   constructor(aspect: number) {
     // A narrow-ish FOV keeps the affine warp from tearing at the screen edges. The far plane
     // has to clear the sky backdrop and its corners, which sit well beyond the parking lot.
-    this.camera = new THREE.PerspectiveCamera(68, aspect, 0.08, 220)
+    // The near plane sets depth precision everywhere, and 0.08 spent most of it on the half
+    // metre in front of the player's face where nothing but their own hands ever is.
+    this.camera = new THREE.PerspectiveCamera(68, aspect, 0.2, 150)
     this.camera.position.copy(this.position)
   }
 

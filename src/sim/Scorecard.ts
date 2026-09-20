@@ -19,6 +19,9 @@ export class Scorecard {
   tapesShelvedWrong = 0
   tapesLeftUnrewound = 0
   registerErrors = 0
+  /** Tapes taken out of tonight's shipment crate and put into circulation. */
+  shipmentStocked = 0
+  shipmentTotal = 0
 
   reset(): void {
     this.customersServed = 0
@@ -28,6 +31,7 @@ export class Scorecard {
     this.tapesShelvedWrong = 0
     this.tapesLeftUnrewound = 0
     this.registerErrors = 0
+    this.shipmentStocked = 0
   }
 
   private ratio(good: number, bad: number): number {
@@ -47,13 +51,19 @@ export class Scorecard {
     return this.ratio(this.customersServed, this.customersLost)
   }
 
+  /** How much of the shipment made it out of the box before close. */
+  get shipmentProgress(): number {
+    return this.shipmentTotal === 0 ? 1 : this.shipmentStocked / this.shipmentTotal
+  }
+
   /** 0..100. Weighted so that abandoning customers hurts most — that is what a manager sees. */
   get score(): number {
-    const service = this.serviceRate * 45
-    const rewind = this.rewindCompliance * 25
-    const shelving = this.shelvingAccuracy * 20
+    const service = this.serviceRate * 40
+    const rewind = this.rewindCompliance * 22
+    const shelving = this.shelvingAccuracy * 18
+    const shipment = this.shipmentProgress * 10
     const till = Math.max(0, 10 - this.registerErrors * 2.5)
-    return Math.round(service + rewind + shelving + till)
+    return Math.round(service + rewind + shelving + shipment + till)
   }
 
   /** A shift nobody worked scores 100 on ratios alone, so promotion needs real volume too. */
@@ -78,6 +88,11 @@ export class Scorecard {
       { label: 'Walked Out', value: String(this.customersLost), tone: this.customersLost === 0 ? 1 : -1 },
       { label: 'Be Kind, Rewind', value: pct(this.rewindCompliance), tone: tone(this.rewindCompliance, 0.9, 0.6) },
       { label: 'Shelving Accuracy', value: pct(this.shelvingAccuracy), tone: tone(this.shelvingAccuracy, 0.9, 0.6) },
+      {
+        label: 'Shipment Stocked',
+        value: `${this.shipmentStocked} / ${this.shipmentTotal}`,
+        tone: tone(this.shipmentProgress, 0.99, 0.5),
+      },
       { label: 'Register Errors', value: String(this.registerErrors), tone: this.registerErrors === 0 ? 1 : -1 },
       { label: 'Shift Score', value: `${this.score} / 100`, tone: tone(this.score / 100, 0.85, 0.5) },
     ]
