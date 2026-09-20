@@ -177,6 +177,13 @@ export class Sfx {
    * A job coming off the board. A rubber stamp and two notes up — the stamp is the store, the
    * notes are the scoreboard, and together they are the only unambiguously good sound in here.
    */
+  /** One "brrring" of the counter phone: a fast trill between two bright bell tones. */
+  phoneRing(): void {
+    for (let i = 0; i < 8; i += 1) {
+      this.blip(i % 2 === 0 ? 1318 : 1046, 0.045, i * 0.052, 0.05)
+    }
+  }
+
   jobDone(): void {
     this.thump(220, 110, 0.13)
     this.burst({ duration: 0.05, peak: 0.12, frequency: 1600, q: 1.1 })

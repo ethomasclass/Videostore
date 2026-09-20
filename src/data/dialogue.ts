@@ -74,6 +74,24 @@ export const FAREWELLS: readonly string[] = [
   "I'm gonna watch this and then think about it for a year. That's my whole thing.",
 ]
 
+/** One side of a phone call, delivered straight into the clerk's ear. */
+export const PHONE_CALLS: readonly string[] = [
+  "Yeah hi, do you have the one with the guy? He's in everything. You know the guy.",
+  "How late are you open tonight? Okay. And how late really?",
+  "It's Marcy. If my husband is in your horror aisle, tell him dinner was at six.",
+  "Do you do reservations? It's for Friday. There will be seven of us. It's a whole thing.",
+  "What time does the drop box close? It's a slot? It can't close? Huh. Power move.",
+  "I'm returning a tape by throwing it from my car in about five minutes. Heads up.",
+  "Is this the pizza place? ... Well what WOULD you recommend?",
+  "My VCR has been flashing twelve o'clock since March and I've decided to live with it. That's the whole call.",
+  "Can you check if you have anything where a dog plays a sport? Any sport. Any dog.",
+  "Do your video games work in a camcorder? Don't laugh. My nephew swears it works.",
+]
+
+export function phoneCall(): string {
+  return pick(PHONE_CALLS)
+}
+
 /** Said instead of naming the title — the recommendation beat, in a customer's own words. */
 export function requestLine(title: Title): string {
   const frames = [

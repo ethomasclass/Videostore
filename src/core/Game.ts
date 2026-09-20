@@ -16,6 +16,7 @@ import { Hands } from '../world/Hands'
 import { Customer } from '../sim/Customer'
 import type { StationKind } from '../world/Store'
 import { GENRE_LABEL } from '../data/catalog'
+import { phoneCall } from '../data/dialogue'
 import { SHIPMENT_SIZE } from '../world/Crate'
 
 type Phase = 'title' | 'shift' | 'report'
@@ -62,6 +63,12 @@ export class Game {
   private rewindJobId: number | null = null
   /** The shipment crate's standing job, which lasts the whole shift. */
   private shipmentJobId: number | null = null
+  /** Where the counter phone sits, so a caller's bubble can hover over it. */
+  private readonly phonePosition = new THREE.Vector3()
+  /** Counts down to the next brrring while a phone job is on the board. */
+  private ringIn = 0
+  /** What the current speech bubble hangs over: the customer, or a fixed point like the phone. */
+  private speechAnchor: 'customer' | THREE.Vector3 = 'customer'
   /** A quick downward nod on the camera when something lands. Decays to nothing. */
   private kick = 0
   /** 0 at the player's own eyes, 1 parked in front of the terminal's CRT. */
@@ -86,6 +93,11 @@ export class Game {
     for (const entry of this.store.interactables) this.byObject.set(entry.object, entry)
     // The customer is not a fixture, so their talk volume rides alongside the store's own.
     this.interactObjects.push(this.customer.talkZone)
+
+    const phone = this.store.interactables.find(
+      (entry) => entry.kind === 'station' && entry.station === 'phone',
+    )
+    if (phone) this.phonePosition.copy(phone.object.position)
 
     this.player = new Player(this.renderer.aspect)
     // The camera joins the scene graph so the arms, parented to it, are actually traversed.
@@ -208,6 +220,17 @@ export class Game {
 
     for (const job of this.jobs.drainExpired()) this.hud.resolveJob(job.id, 'failed')
 
+    // The ring is the job notification: it comes from a place in the room, not from the HUD.
+    if (this.jobs.pending('phone').length > 0) {
+      this.ringIn -= dt
+      if (this.ringIn <= 0) {
+        this.sfx.phoneRing()
+        this.ringIn = 2.6
+      }
+    } else {
+      this.ringIn = 0.2
+    }
+
     this.customer.update(dt)
     this.syncCustomerJob()
     this.updateSpeech(dt)
@@ -261,6 +284,8 @@ export class Game {
     if (import.meta.env.DEV) {
       ;(window as unknown as Record<string, unknown>).__tp = (x: number, z: number, yaw: number, pitch = 0) =>
         this.player.teleport(x, z, yaw, pitch)
+      ;(window as unknown as Record<string, unknown>).__job = (kind: StationKind, tidy = false) =>
+        this.jobs.debugSpawn(kind, tidy)
       ;(window as unknown as Record<string, unknown>).__probe = {
         pos: this.player.position.toArray().map((n) => Number(n.toFixed(2))),
         yaw: Number(this.player.heading.toFixed(3)),
@@ -303,6 +328,19 @@ export class Game {
       return
     }
 
+    // The phone: answer it if it is ringing, and take whoever it is on the chin.
+    if (station === 'phone') {
+      const call = this.jobs.pending('phone')[0]
+      if (!call) {
+        this.hud.showToast('The phone is quiet. For now.', 'good')
+        return
+      }
+      this.busy = { station, timeLeft: this.hands.play('phone'), jobId: call.id }
+      this.player.frozen = true
+      this.sayFrom('Caller', phoneCall(), this.phonePosition)
+      return
+    }
+
     // A shelf run only takes what belongs on it. Pick the job here rather than at the end of
     // the animation, so the refusal lands the instant the player presses the key.
     let jobId: number | null = null
@@ -323,6 +361,16 @@ export class Game {
         return
       }
       jobId = match.id
+
+      // Straightening is its own performance: no case in hand, three pushes, three clacks.
+      if (match.tidy) {
+        this.busy = { station, timeLeft: this.hands.play('tidy'), jobId }
+        this.player.frozen = true
+        this.sfx.shelfPlace(0.25)
+        this.sfx.shelfPlace(0.52)
+        this.sfx.shelfPlace(0.79)
+        return
+      }
     } else {
       jobId = this.jobs.pending(station)[0]?.id ?? null
     }
@@ -366,7 +414,8 @@ export class Game {
       return
     }
 
-    if (crate.open()) {
+    // The flaps wait until the hands have actually gripped them, so the two animations agree.
+    if (crate.open(0.55)) {
       this.busy = { station: 'restock', timeLeft: this.hands.play('restock'), jobId: null }
       this.player.frozen = true
       this.sfx.thud(0.3)
@@ -462,7 +511,15 @@ export class Game {
     // The crate settles itself as it empties, so nothing to credit when its animation ends.
     if (finished.station === 'restock') return
 
-    const verb = finished.station === 'shelf' ? 'Shelved' : 'Bin emptied'
+    const tidy = finished.jobId !== null && this.jobs.pending('shelf').find((job) => job.id === finished.jobId)?.tidy
+    const verb =
+      finished.station === 'shelf'
+        ? tidy
+          ? 'Straightened'
+          : 'Shelved'
+        : finished.station === 'phone'
+          ? 'Call handled'
+          : 'Bin emptied'
     this.settleJob(finished.jobId, verb)
   }
 
@@ -495,9 +552,7 @@ export class Game {
   private updateSpeech(dt: number): void {
     const line = this.customer.consumeSpeech()
     if (line && this.chatter) {
-      this.hud.showSpeech(line.name, line.text)
-      this.speechLeft = speechDuration(line.text)
-      this.positionSpeech()
+      this.sayFrom(line.name, line.text, 'customer')
       return
     }
 
@@ -507,6 +562,14 @@ export class Game {
     }
   }
 
+  /** A line from anyone — customer or caller — with the point in the room it hangs over. */
+  private sayFrom(name: string, text: string, anchor: 'customer' | THREE.Vector3): void {
+    this.speechAnchor = anchor
+    this.hud.showSpeech(name, text)
+    this.speechLeft = speechDuration(text)
+    this.positionSpeech()
+  }
+
   /** Parks the speech bubble over the speaker's head, in screen space. */
   private positionSpeech(): void {
     if (this.speechLeft <= 0) return
@@ -514,15 +577,19 @@ export class Game {
     const camera = this.player.camera
     camera.updateMatrixWorld()
     // A little above the top of their head, so the tail points at them and not through them.
-    PROJECTED.set(this.customer.root.position.x, 1.95, this.customer.root.position.z)
+    const fixed = this.speechAnchor !== 'customer'
+    if (this.speechAnchor === 'customer') {
+      PROJECTED.set(this.customer.root.position.x, 1.95, this.customer.root.position.z)
+    } else {
+      PROJECTED.set(this.speechAnchor.x, this.speechAnchor.y + 0.22, this.speechAnchor.z)
+    }
     PROJECTED.project(camera)
 
     const onScreen = PROJECTED.z <= 1 && Math.abs(PROJECTED.x) <= 1 && Math.abs(PROJECTED.y) <= 1
     if (!onScreen) {
-      // You can still hear someone you are not looking at, so the line stays readable — but
-      // pinned low and centred, where it reads as overheard rather than as pointing at the
-      // wrong thing. Clamping it to an edge just parks it on top of the checklist.
-      this.hud.anchorSpeech(window.innerWidth / 2, window.innerHeight - 96, false)
+      // A customer's bubble hides until you look back at them; a caller's line drops to low
+      // and centred instead, because it is coming out of the handset in your hand.
+      this.hud.anchorSpeech(window.innerWidth / 2, window.innerHeight - 96, false, !fixed)
       return
     }
 

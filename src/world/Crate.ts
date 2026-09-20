@@ -32,6 +32,8 @@ export class Crate {
   /** 0 shut, 1 flat open. */
   private lid = 0
   private lidTarget = 0
+  /** Seconds before the flaps actually start to move — the hands need to reach them first. */
+  private openDelay = 0
   /** The tape currently being lifted out, and how far through that lift it is. */
   private lifting: THREE.Mesh | null = null
   private liftTime = 0
@@ -116,6 +118,7 @@ export class Crate {
     this.left = SHIPMENT_SIZE
     this.lid = 0
     this.lidTarget = 0
+    this.openDelay = 0
     this.lifting = null
     for (const [index, sleeve] of this.stack.entries()) {
       sleeve.position.y = STOCK_Y - (index % 3) * 0.018
@@ -124,9 +127,10 @@ export class Crate {
   }
 
   /** First interaction just opens the box. Returns true when that is all it did. */
-  open(): boolean {
+  open(delay = 0): boolean {
     if (this.lidTarget > 0) return false
     this.lidTarget = 1
+    this.openDelay = delay
     return true
   }
 
@@ -144,6 +148,11 @@ export class Crate {
   }
 
   update(dt: number): void {
+    if (this.openDelay > 0) {
+      this.openDelay -= dt
+      if (this.openDelay > 0) return
+    }
+
     if (this.lid !== this.lidTarget) {
       this.lid = THREE.MathUtils.damp(this.lid, this.lidTarget, 6, dt)
       if (Math.abs(this.lid - this.lidTarget) < 0.004) this.lid = this.lidTarget

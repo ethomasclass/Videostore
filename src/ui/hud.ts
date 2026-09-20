@@ -167,13 +167,15 @@ export class Hud {
    * Parks the bubble over whoever is speaking. Screen coordinates come from projecting their
    * head, and the clamp keeps a bubble on screen when its owner is walking off the edge of it.
    */
-  anchorSpeech(x: number, y: number, onScreen: boolean): void {
+  anchorSpeech(x: number, y: number, onScreen: boolean, hideOffScreen = true): void {
     if (!this.speechActive) return
     // A line from someone you cannot see has nothing to point at, and a bubble parked in the
     // middle of the screen with no owner is just something in the way. It comes back by
-    // itself if you turn around while they are still talking.
-    this.speech.hidden = !onScreen
-    if (!onScreen) return
+    // itself if you turn around while they are still talking. A phone call is the exception:
+    // it is in your ear, not in the room, so it stays up wherever you look — just tailless.
+    this.speech.hidden = !onScreen && hideOffScreen
+    this.speech.classList.toggle('offscreen', !onScreen)
+    if (this.speech.hidden) return
     const width = this.speech.offsetWidth
     const margin = 12
     const clampedX = Math.max(width / 2 + margin, Math.min(window.innerWidth - width / 2 - margin, x))

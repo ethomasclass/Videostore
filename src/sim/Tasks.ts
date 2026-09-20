@@ -12,6 +12,8 @@ export interface Job {
   patience: number
   /** Always shown on the board, whatever else is more urgent. The shipment is the only one. */
   pinned?: boolean
+  /** A shelf job that is about order, not stock: walk to the section and square it up. */
+  tidy?: boolean
   title?: Title
 }
 
@@ -22,6 +24,8 @@ const TEMPLATES: Record<StationKind, { label: (title: Title) => string; patience
   shelf: { label: (t) => `Shelve ${t.title} \u2014 ${GENRE_LABEL[t.genre]}`, patience: 110 },
   register: { label: () => 'Customer waiting at the register', patience: 45 },
   restock: { label: () => 'Put out the shipment', patience: 150 },
+  // Short patience on purpose: phones do not ring for a minute and a half.
+  phone: { label: () => 'The phone is ringing', patience: 26 },
 }
 
 const pickTitle = (): Title => {
@@ -73,6 +77,7 @@ export class JobBoard {
       this.jobs.splice(i, 1)
       this.expired.push(job)
       if (job.kind === 'register') scorecard.customersLost += 1
+      else if (job.kind === 'phone') scorecard.callsMissed += 1
       else if (job.kind === 'rewind') scorecard.tapesLeftUnrewound += 1
       else if (job.kind === 'shelf') scorecard.tapesShelvedWrong += 1
     }
@@ -128,13 +133,18 @@ export class JobBoard {
     return this.jobs.filter((job) => job.kind === kind).sort((a, b) => a.timeLeft - b.timeLeft)
   }
 
-  private spawn(): void {
+  /** Dev-only entry: scripted playtests cannot wait out a random spawner. */
+  debugSpawn(kind: StationKind, tidy = false): void {
+    this.spawn(kind, tidy)
+  }
+
+  private spawn(force?: StationKind, forceTidy = false): void {
     // No 'register' here: a customer at the counter raises that job, so spawning it at random
     // would put a queue on the board with nobody standing in it.
     // No 'restock' either: the shipment crate is a standing job raised at clock-in, not
     // something that turns up twice an hour.
-    const kinds: StationKind[] = ['rewind', 'shelf', 'returns']
-    const weights = [3, 3, 1]
+    const kinds: StationKind[] = force ? [force] : ['rewind', 'shelf', 'returns', 'phone']
+    const weights = force ? [1] : [3, 3, 1, 1]
     const total = weights.reduce((sum, weight) => sum + weight, 0)
     let roll = Math.random() * total
     let kind: StationKind = 'rewind'
@@ -147,10 +157,27 @@ export class JobBoard {
     }
 
     // One queue per station is enough; stacking five identical jobs just reads as noise.
-    if (this.jobs.filter((job) => job.kind === kind).length >= 2) return
+    const cap = kind === 'phone' ? 1 : 2
+    if (this.jobs.filter((job) => job.kind === kind).length >= cap) return
 
     const template = TEMPLATES[kind]
     const title = pickTitle()
+
+    // A third of shelf work is not new stock at all — it is customers having pawed through a
+    // section and left it leaning. Same station, same targeting, different verb.
+    if (kind === 'shelf' && (forceTidy || Math.random() < 0.33)) {
+      this.jobs.push({
+        id: this.nextId++,
+        kind,
+        label: `Straighten up ${GENRE_LABEL[title.genre]}`,
+        timeLeft: 130,
+        patience: 130,
+        title,
+        tidy: true,
+      })
+      return
+    }
+
     this.jobs.push({
       id: this.nextId++,
       kind,
@@ -171,6 +198,9 @@ export class JobBoard {
         break
       case 'shelf':
         scorecard.tapesShelvedCorrectly += 1
+        break
+      case 'phone':
+        scorecard.callsAnswered += 1
         break
       case 'returns':
       case 'restock':

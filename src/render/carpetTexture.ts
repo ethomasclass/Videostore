@@ -8,6 +8,7 @@ import { ROOM } from './palette'
 const TILE = 64
 
 let carpet: THREE.CanvasTexture | null = null
+let wood: THREE.CanvasTexture | null = null
 let tile: THREE.CanvasTexture | null = null
 let pool: THREE.CanvasTexture | null = null
 
@@ -43,6 +44,54 @@ export function carpetTexture(repeatX: number, repeatZ: number): THREE.CanvasTex
 }
 
 /** Vinyl floor tile with a grout line, for the hard-floor strip across the front of the store. */
+/**
+ * Blond maple laminate, which is what every one of these counters was topped with — the wood
+ * over the blue base is half of what makes the reference counters read as counters and not as
+ * painted blocks. Grain runs along X, so repeat it along the counter's length.
+ */
+export function woodTexture(repeatX = 1, repeatY = 1): THREE.CanvasTexture {
+  if (!wood) {
+    const canvas = document.createElement('canvas')
+    canvas.width = TILE
+    canvas.height = TILE
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('2D canvas unavailable for wood')
+
+    ctx.fillStyle = '#d9ab5f'
+    ctx.fillRect(0, 0, TILE, TILE)
+
+    // Long low-contrast grain streaks, a few per tile, wobbling a pixel as they run.
+    for (let i = 0; i < 26; i += 1) {
+      const y = Math.floor(Math.random() * TILE)
+      const light = i % 3 === 0
+      ctx.fillStyle = light ? 'rgba(238,206,140,0.5)' : 'rgba(164,118,52,0.35)'
+      let yy = y
+      for (let x = 0; x < TILE; x += 4 + Math.floor(Math.random() * 5)) {
+        if (Math.random() < 0.3) yy += Math.random() < 0.5 ? -1 : 1
+        ctx.fillRect(x, yy, 4 + Math.floor(Math.random() * 6), 1)
+      }
+    }
+    // A couple of darker knots.
+    ctx.fillStyle = 'rgba(140,96,40,0.5)'
+    for (let i = 0; i < 3; i += 1) {
+      ctx.fillRect(Math.floor(Math.random() * TILE), Math.floor(Math.random() * TILE), 3, 2)
+    }
+
+    wood = new THREE.CanvasTexture(canvas)
+    wood.magFilter = THREE.LinearFilter
+    wood.minFilter = THREE.LinearFilter
+    wood.generateMipmaps = false
+    wood.colorSpace = THREE.SRGBColorSpace
+  }
+
+  const texture = wood.clone()
+  texture.wrapS = THREE.RepeatWrapping
+  texture.wrapT = THREE.RepeatWrapping
+  texture.repeat.set(repeatX, repeatY)
+  texture.needsUpdate = true
+  return texture
+}
+
 export function tileTexture(repeatX: number, repeatZ: number): THREE.CanvasTexture {
   if (!tile) {
     const canvas = document.createElement('canvas')

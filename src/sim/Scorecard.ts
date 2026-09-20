@@ -22,6 +22,8 @@ export class Scorecard {
   /** Tapes taken out of tonight's shipment crate and put into circulation. */
   shipmentStocked = 0
   shipmentTotal = 0
+  callsAnswered = 0
+  callsMissed = 0
 
   reset(): void {
     this.customersServed = 0
@@ -32,6 +34,8 @@ export class Scorecard {
     this.tapesLeftUnrewound = 0
     this.registerErrors = 0
     this.shipmentStocked = 0
+    this.callsAnswered = 0
+    this.callsMissed = 0
   }
 
   private ratio(good: number, bad: number): number {
@@ -92,6 +96,11 @@ export class Scorecard {
         label: 'Shipment Stocked',
         value: `${this.shipmentStocked} / ${this.shipmentTotal}`,
         tone: tone(this.shipmentProgress, 0.99, 0.5),
+      },
+      {
+        label: 'Phone Calls',
+        value: this.callsMissed === 0 ? `${this.callsAnswered} answered` : `${this.callsMissed} rang out`,
+        tone: this.callsMissed === 0 ? 1 : -1,
       },
       { label: 'Register Errors', value: String(this.registerErrors), tone: this.registerErrors === 0 ? 1 : -1 },
       { label: 'Shift Score', value: `${this.score} / 100`, tone: tone(this.score / 100, 0.85, 0.5) },

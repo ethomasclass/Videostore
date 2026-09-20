@@ -10,14 +10,14 @@ import { spineStripTexture } from '../render/spineTexture'
 import { CATALOG, GENRE_LABEL, newReleases, type Genre, type Title } from '../data/catalog'
 import { box, unlitBox, hitbox, panel, place, DOORS, FRONT_SOLID_HALF, STORE, VHS } from './buildKit'
 import { buildParkingLot, buildStorefront } from './exterior'
-import { carpetTexture, lightPoolTexture, tileTexture } from '../render/carpetTexture'
+import { carpetTexture, lightPoolTexture, tileTexture, woodTexture } from '../render/carpetTexture'
 import { Rewinder } from './Rewinder'
 import { Crate } from './Crate'
 
 export { STORE } from './buildKit'
 
-/** The five places work happens. Every job on the board resolves at one of them. */
-export type StationKind = 'rewind' | 'returns' | 'register' | 'restock' | 'shelf'
+/** The six places work happens. Every job on the board resolves at one of them. */
+export type StationKind = 'rewind' | 'returns' | 'register' | 'restock' | 'shelf' | 'phone'
 
 /** Doing a job, versus picking a case up to read the back of it — different verbs entirely. */
 export type Interactable =
@@ -675,9 +675,24 @@ function buildCounter(build: Build): void {
   const { root, colliders, interactables, addItem } = build
   const { halfWidth, frontZ, backZ, height, top } = COUNTER
 
+  // Every reference counter is the same sandwich: a blue base, a blond maple work top, and a
+  // raised maple transaction ledge along the customer edge. Blue-on-blue is what made ours
+  // read as a painted block with things scattered on it.
+  const woodTop = (width: number, depth: number, x: number, y: number, z: number): void => {
+    // Tessellated along its length for the same reason the floor is: affine texture error
+    // grows with polygon size, and a seven-metre quad smears the grain into streaks.
+    const slab = new THREE.Mesh(
+      new THREE.BoxGeometry(width, 0.06, depth, Math.max(1, Math.ceil(width)), 1, 1),
+      createPS1Material({ map: woodTexture(Math.max(1, Math.round(width / 0.9)), 1) }),
+    )
+    place(root, slab, x, y, z)
+    // The blue edge band under the slab's lip, which is what draws the counter's outline.
+    place(root, box(width + 0.02, 0.05, depth + 0.02, ROOM.counterTop), x, y - 0.05, z)
+  }
+
   const bar = (width: number, depth: number, x: number, z: number): void => {
     colliders.push(place(root, box(width, height, depth, ROOM.counter), x, height / 2, z))
-    place(root, box(width + 0.08, 0.06, depth + 0.08, ROOM.counterTop), x, top, z)
+    woodTop(width + 0.08, depth + 0.08, x, top, z)
   }
 
   const frontDepth = 0.9
@@ -685,6 +700,13 @@ function buildCounter(build: Build): void {
   bar(halfWidth * 2, frontDepth, 0, frontZ)
   bar(0.9, wingLength, -halfWidth + 0.45, frontZ + wingLength / 2)
   bar(0.9, wingLength, halfWidth - 0.45, frontZ + wingLength / 2)
+
+  // The transaction ledge: a taller, narrower run along the customer edge of the front bar,
+  // where the tapes and the money actually changed hands.
+  const ledgeZ = frontZ - frontDepth / 2 + 0.14
+  const LEDGE_TOP = top + 0.24
+  place(root, box(halfWidth * 2 + 0.08, LEDGE_TOP - top + 0.02, 0.26, ROOM.counter), 0, (top + LEDGE_TOP) / 2, ledgeZ)
+  woodTop(halfWidth * 2 + 0.16, 0.34, 0, LEDGE_TOP, ledgeZ)
 
   // Cabinetry on the staff side, which is the one warm surface in an otherwise blue object.
   for (let i = 0; i < 7; i += 1) {
@@ -809,7 +831,6 @@ function buildCounter(build: Build): void {
   // been walked out to the floor, and the small stuff nobody ever tidied. Everything lives in
   // the band the player can actually see over the bar, and clear of the two wings.
   const staffZ = frontZ + 0.26
-  const customerZ = frontZ - 0.32
 
   // Returns waiting on the deck, stacked beside it where the player's hands reach.
   tapeStack(root, 2.25, top, staffZ - 0.16, 6, 0.12)
@@ -841,40 +862,68 @@ function buildCounter(build: Build): void {
   shelveTag.position.set(crateX, top + 0.42, staffZ + 0.28)
   root.add(shelveTag)
 
-  // Receipt printer, with a curl of paper coming out of it.
-  place(root, box(0.26, 0.18, 0.28, BEIGE), -1.95, top + 0.09, staffZ + 0.2)
-  place(root, box(0.22, 0.02, 0.12, 0xf0ecdd), -1.95, top + 0.19, staffZ + 0.04)
+  // --- Register station: printer and cash drawers cluster around the terminal ---
+  // A receipt printer is a box with a mouth: the slot and the tongue of paper are what make
+  // it a printer rather than a crate.
+  const printerX = -2.05
+  place(root, box(0.26, 0.14, 0.3, BEIGE), printerX, top + 0.07, staffZ)
+  place(root, box(0.28, 0.04, 0.1, BEIGE_DARK), printerX, top + 0.15, staffZ - 0.06)
+  place(root, box(0.2, 0.012, 0.03, 0x24262c), printerX, top + 0.155, staffZ - 0.06)
+  const receipt = place(root, box(0.16, 0.008, 0.14, 0xf4f0e2), printerX, top + 0.185, staffZ - 0.14)
+  void receipt
+  place(root, box(0.1, 0.06, 0.1, BEIGE_DARK), printerX, top + 0.2, staffZ + 0.08)
 
-  // The phone. Beige, corded, and permanently ringing.
-  place(root, box(0.24, 0.07, 0.28, BEIGE_DARK), 0.72, top + 0.035, staffZ + 0.22)
-  place(root, box(0.26, 0.06, 0.1, 0x2f3138), 0.72, top + 0.1, staffZ + 0.12)
-  place(root, box(0.02, 0.02, 0.2, 0x2f3138), 0.9, top + 0.02, staffZ + 0.4)
-
-  // Pens, a tape dispenser, a stack of membership forms: the litter of a working till.
-  place(root, box(0.1, 0.14, 0.1, 0x2f5aa8), 1.25, top + 0.07, staffZ + 0.1)
-  for (let i = 0; i < 4; i += 1) {
-    place(root, box(0.014, 0.16, 0.014, [0xd8232a, 0x1b1e25, 0x2e8b57, 0x2f5aa8][i] ?? 0x1b1e25), 1.22 + i * 0.02, top + 0.18, staffZ + 0.1)
+  // White cash drawers in two cabinet bays flanking the register, like every photo of one of
+  // these counters: the drawer fronts are the brightest thing under the top.
+  for (const bayX of [-1.04, -0.01]) {
+    place(root, box(0.88, 0.26, 0.05, 0xe8e5da), bayX, 0.9, frontZ + frontDepth / 2 + 0.015)
+    place(root, box(0.3, 0.03, 0.06, 0xb9b4a6), bayX, 0.88, frontZ + frontDepth / 2 + 0.03)
   }
-  place(root, box(0.18, 0.09, 0.12, 0x3a3f48), 1.6, top + 0.045, staffZ + 0.16)
-  place(root, box(0.26, 0.04, 0.2, 0xefe9d8), -0.5, top + 0.02, staffZ + 0.1)
-  place(root, box(0.12, 0.025, 0.12, 0xf0d24a), -0.15, top + 0.012, staffZ + 0.3)
 
-  // The till itself, dead centre where the customer expects it: a beige box with a raised
-  // display, a blue keypad and a drawer that never sat quite flush.
-  const tillX = 0.05
-  place(root, box(0.52, 0.3, 0.44, BEIGE), tillX, top + 0.15, staffZ - 0.02)
-  place(root, box(0.3, 0.16, 0.06, BEIGE_DARK), tillX, top + 0.38, staffZ + 0.12)
-  const tillScreen = panel(0.24, 0.1, { color: 0x7fd08a, unlit: true })
-  tillScreen.position.set(tillX, top + 0.38, staffZ + 0.155)
-  root.add(tillScreen)
-  place(root, box(0.34, 0.1, 0.26, 0x2f5aa8), tillX, top + 0.33, staffZ - 0.1)
-  place(root, box(0.5, 0.06, 0.05, BEIGE_DARK), tillX, top + 0.08, staffZ - 0.25)
+  // Membership forms and the cup of pens beside the keyboard, squared to the counter edge.
+  place(root, box(0.26, 0.04, 0.2, 0xefe9d8), -0.5, top + 0.02, staffZ + 0.06)
+  place(root, box(0.09, 0.12, 0.09, 0x2f5aa8), -0.62, top + 0.06, staffZ + 0.3)
+  for (let i = 0; i < 3; i += 1) {
+    place(root, box(0.013, 0.13, 0.013, [0xd8232a, 0x1b1e25, 0x2e8b57][i] ?? 0x1b1e25), -0.65 + i * 0.028, top + 0.15, staffZ + 0.3)
+  }
 
-  // A spike of rental slips and a stack of paper bags, which is what the till sat between.
-  place(root, box(0.1, 0.02, 0.1, 0x6b6459), tillX + 0.45, top + 0.02, staffZ + 0.18)
-  place(root, box(0.01, 0.16, 0.01, 0x9aa0a4), tillX + 0.45, top + 0.1, staffZ + 0.18)
-  place(root, box(0.09, 0.06, 0.09, 0xefe9d8), tillX + 0.45, top + 0.06, staffZ + 0.18)
-  place(root, box(0.3, 0.09, 0.22, 0xc6b58a), -1.2, top + 0.05, staffZ + 0.3)
+  // --- The phone, built like a phone: base, keypad, handset across the cradle, coiled cord ---
+  const phoneX = 0.4
+  const phoneZ = staffZ + 0.1
+  place(root, box(0.26, 0.06, 0.22, BEIGE_DARK), phoneX, top + 0.03, phoneZ)
+  place(root, box(0.13, 0.012, 0.14, 0x2a2c33), phoneX + 0.05, top + 0.062, phoneZ + 0.01)
+  for (let row = 0; row < 4; row += 1) {
+    for (let column = 0; column < 3; column += 1) {
+      place(
+        root,
+        box(0.024, 0.008, 0.02, 0xd9d4c4),
+        phoneX + 0.014 + column * 0.036,
+        top + 0.07,
+        phoneZ - 0.05 + row * 0.038,
+      )
+    }
+  }
+  // The handset: two lobes and a bridge, resting along the left edge of the base.
+  const handsetX = phoneX - 0.085
+  place(root, box(0.06, 0.045, 0.07, 0x35373e), handsetX, top + 0.085, phoneZ - 0.075)
+  place(root, box(0.06, 0.045, 0.07, 0x35373e), handsetX, top + 0.085, phoneZ + 0.075)
+  place(root, box(0.045, 0.028, 0.13, 0x35373e), handsetX, top + 0.075, phoneZ)
+  // Coiled cord dropping off the back edge in three sagging segments.
+  place(root, box(0.02, 0.02, 0.06, 0x2a2c33), handsetX, top + 0.02, phoneZ + 0.14)
+  place(root, box(0.02, 0.05, 0.02, 0x2a2c33), handsetX + 0.03, top - 0.02, phoneZ + 0.17)
+  place(root, box(0.02, 0.05, 0.02, 0x2a2c33), handsetX + 0.01, top - 0.06, phoneZ + 0.19)
+  station('Answer the phone', 'phone', [0.9, 0.9, 0.9], [phoneX, top + 0.25, phoneZ])
+
+  // The card imprinter — the kachunk machine — flat with its slider parked at one end.
+  place(root, box(0.3, 0.045, 0.18, 0x3a3d45), 1.05, top + 0.022, staffZ + 0.05)
+  place(root, box(0.09, 0.035, 0.16, 0x6a6e78), 0.97, top + 0.06, staffZ + 0.05)
+
+  // Paper bags against the right wing, standing up the way a fresh stack does.
+  for (let i = 0; i < 3; i += 1) {
+    const bag = box(0.02, 0.3, 0.2, 0xc6b58a)
+    bag.rotation.z = 0.05 + i * 0.04
+    place(root, bag, 3.0 + i * 0.035, top + 0.15, staffZ + 0.2)
+  }
 
   // The boombox on the end of the wing, which is what the radio in this room is coming out of.
   place(root, box(0.5, 0.26, 0.22, 0x2b2f36), halfWidth - 0.45, top + 0.13, backZ - 0.35)
@@ -885,23 +934,57 @@ function buildCounter(build: Build): void {
   }
   place(root, box(0.16, 0.08, 0.02, 0x14171d), halfWidth - 0.45, top + 0.13, backZ - 0.24)
 
-  // Customer side: the impulse rack of candy at the till, and the sign-up clipboard.
-  place(root, box(0.34, 0.06, 0.34, 0xd8232a), 1.15, top + 0.03, customerZ)
-  for (let i = 0; i < 9; i += 1) {
-    place(root, box(0.06, 0.12, 0.04, [0xf5c518, 0x8e44ad, 0x2e8b57][i % 3] ?? 0xf5c518), 1.02 + (i % 3) * 0.07, top + 0.11, customerZ - 0.07 + Math.floor(i / 3) * 0.07)
-  }
-  place(root, box(0.28, 0.02, 0.36, 0x8d7a58), -0.55, top + 0.01, customerZ)
-  place(root, box(0.24, 0.01, 0.32, 0xf0ecdd), -0.55, top + 0.025, customerZ)
+  // --- The transaction ledge carries the customer-facing things, each with a job to do ---
+  const onLedge = LEDGE_TOP + 0.03
 
-  // A rewind placard standing on the customer face of the bar, because of course there was one.
-  place(root, box(0.6, 0.22, 0.03, BRAND.yellow), -1.9, top + 0.13, customerZ - 0.04)
-  const placard = panel(0.58, 0.2, {
-    map: signTexture('Be Kind Rewind', { background: BRAND.yellow, color: BRAND.blueDark, aspect: 2.9 }),
+  // The white paper sign every one of these stores taped to the counter.
+  const idSign = panel(0.42, 0.3, {
+    map: signTexture('Member Card Required', { background: 0xf2eee0, color: 0x22242c, aspect: 1.5 }),
     unlit: true,
   })
-  placard.position.set(-1.9, top + 0.13, customerZ - 0.058)
-  placard.rotation.y = Math.PI
-  root.add(placard)
+  idSign.position.set(-2.3, onLedge + 0.13, ledgeZ - 0.02)
+  idSign.rotation.set(-0.16, Math.PI, 0)
+  root.add(idSign)
+
+  // NEXT REGISTER PLEASE, the yellow tent sign, leaning both ways so both queues can read it.
+  for (const side of [-1, 1] as const) {
+    const tent = panel(0.5, 0.16, {
+      map: signTexture('Next Register Please', { background: BRAND.yellow, color: BRAND.blueDark, aspect: 3.1, rule: false }),
+      unlit: true,
+    })
+    tent.position.set(-0.7, onLedge + 0.07, ledgeZ + side * 0.035)
+    tent.rotation.set(side * 0.5, side === 1 ? 0 : Math.PI, 0)
+    root.add(tent)
+  }
+
+  // The candy bowl by the till. Free with any late fee argument.
+  place(root, box(0.2, 0.05, 0.2, 0x8a4a2e), 0.6, onLedge + 0.025, ledgeZ)
+  for (let i = 0; i < 6; i += 1) {
+    place(
+      root,
+      box(0.03, 0.02, 0.03, [0xd8232a, 0xf5c518, 0x2e8b57][i % 3] ?? 0xd8232a),
+      0.53 + (i % 3) * 0.05,
+      onLedge + 0.055,
+      ledgeZ - 0.03 + Math.floor(i / 3) * 0.06,
+    )
+  }
+
+  // A little TOP HITS stand at the end of the ledge, facing the queue.
+  const hitTitle = newReleases()[1] ?? CATALOG[3]
+  if (hitTitle) {
+    place(root, box(0.3, 0.04, 0.12, BRAND.blue), 2.5, onLedge + 0.02, ledgeZ)
+    const hitCard = panel(0.24, 0.34, { map: boxArtTexture(hitTitle) })
+    hitCard.position.set(2.5, onLedge + 0.2, ledgeZ - 0.03)
+    hitCard.rotation.set(-0.18, Math.PI, 0)
+    root.add(hitCard)
+    const hitHeader = panel(0.3, 0.07, {
+      map: signTexture('Top Hits', { background: BRAND.yellow, color: BRAND.blueDark, aspect: 4.3, rule: false }),
+      unlit: true,
+    })
+    hitHeader.position.set(2.5, onLedge + 0.41, ledgeZ - 0.06)
+    hitHeader.rotation.set(-0.18, Math.PI, 0)
+    root.add(hitHeader)
+  }
 }
 
 /**
