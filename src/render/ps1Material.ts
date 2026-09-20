@@ -77,19 +77,27 @@ const fragmentShader = /* glsl */ `
   void main() {
     vec2 uv = vUvW / vW;
 
-    vec4 base = vec4(uColor, uOpacity);
+    vec3 albedo = uColor;
+    float alpha = uOpacity;
+
     #ifdef USE_PS1_MAP
-      base *= texture2D(uMap, uv);
+      vec4 texel = texture2D(uMap, uv);
+      // Alpha-test the texture only. Folding uOpacity into this test would make any
+      // translucent surface — glass, most obviously — vanish instead of blending.
+      if (texel.a < 0.5) discard;
+      albedo *= texel.rgb;
     #endif
 
-    if (base.a < 0.5) discard;
+    // A fully transparent surface still writes depth, so discard it outright: that is how
+    // invisible interaction hitboxes stay invisible without occluding what is behind them.
+    if (alpha < 0.01) discard;
 
-    vec3 lit = base.rgb * vLight;
+    vec3 lit = albedo * vLight;
 
     float fog = clamp((vFogDepth - uFogNear) / (uFogFar - uFogNear), 0.0, 1.0);
     lit = mix(lit, uFogColor, fog);
 
-    gl_FragColor = vec4(lit, base.a);
+    gl_FragColor = vec4(lit, alpha);
   }
 `
 

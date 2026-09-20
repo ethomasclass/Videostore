@@ -13,8 +13,13 @@ export interface Movement {
 export class Input {
   readonly touch: TouchControls | null = null
 
+  /** Keys currently held — for continuous actions like walking. */
   private readonly pressed = new Set<string>()
-  private readonly consumed = new Set<string>()
+  /**
+   * Presses waiting to be acted on. A tap that starts and ends between two frames never shows
+   * up as held, so one-shot actions read this instead and no quick press is ever dropped.
+   */
+  private readonly queued = new Set<string>()
   private yawDelta = 0
   private pitchDelta = 0
   private locked = false
@@ -37,11 +42,11 @@ export class Input {
   private onKeyDown = (event: KeyboardEvent): void => {
     if (event.repeat) return
     this.pressed.add(event.code)
+    this.queued.add(event.code)
   }
 
   private onKeyUp = (event: KeyboardEvent): void => {
     this.pressed.delete(event.code)
-    this.consumed.delete(event.code)
   }
 
   private onLockChange = (): void => {
@@ -105,9 +110,16 @@ export class Input {
   /** True once per press of E or of the on-screen interact button. */
   consumeInteract(): boolean {
     if (this.touch?.consumeInteract()) return true
-    if (!this.pressed.has('KeyE') || this.consumed.has('KeyE')) return false
-    this.consumed.add('KeyE')
-    return true
+    return this.consumeKey('KeyE')
+  }
+
+  /** True once per press of Escape — backing out of whatever is open. */
+  consumeCancel(): boolean {
+    return this.consumeKey('Escape')
+  }
+
+  private consumeKey(code: string): boolean {
+    return this.queued.delete(code)
   }
 
   dispose(): void {

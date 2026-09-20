@@ -1,17 +1,17 @@
-import type { InteractKind } from '../world/Store'
+import type { StationKind } from '../world/Store'
 import { CATALOG, type Title } from '../data/catalog'
 import type { Scorecard } from './Scorecard'
 
 export interface Job {
   id: number
-  kind: InteractKind
+  kind: StationKind
   label: string
   /** Seconds of real time left before the job goes sour. */
   timeLeft: number
   title?: Title
 }
 
-const TEMPLATES: Record<InteractKind, { label: (title: Title) => string; patience: number }> = {
+const TEMPLATES: Record<StationKind, { label: (title: Title) => string; patience: number }> = {
   returns: { label: () => 'Empty the return bin', patience: 90 },
   rewind: { label: (t) => `Rewind ${t.title}`, patience: 75 },
   shelf: { label: (t) => `Shelve ${t.title}`, patience: 110 },
@@ -65,11 +65,11 @@ export class JobBoard {
   }
 
   private spawn(): void {
-    const kinds: InteractKind[] = ['register', 'rewind', 'shelf', 'returns', 'restock']
+    const kinds: StationKind[] = ['register', 'rewind', 'shelf', 'returns', 'restock']
     const weights = [4, 3, 3, 1, 1]
     const total = weights.reduce((sum, weight) => sum + weight, 0)
     let roll = Math.random() * total
-    let kind: InteractKind = 'register'
+    let kind: StationKind = 'register'
     for (let i = 0; i < kinds.length; i += 1) {
       roll -= weights[i] ?? 0
       if (roll <= 0) {
@@ -93,7 +93,7 @@ export class JobBoard {
   }
 
   /** Resolves the most urgent job at a station. Returns false when there was nothing to do. */
-  complete(kind: InteractKind, scorecard: Scorecard): Job | null {
+  complete(kind: StationKind, scorecard: Scorecard): Job | null {
     let best: Job | null = null
     let bestIndex = -1
     this.jobs.forEach((job, index) => {

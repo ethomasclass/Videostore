@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { Renderer } from '../render/Renderer'
 import { FOG } from '../render/palette'
 import { buildStore, type BuiltStore, type Interactable } from '../world/Store'
+import type { Title } from '../data/catalog'
 import { Player } from '../world/Player'
 import { Input } from './Input'
 import { ShiftClock } from './Clock'
@@ -13,6 +14,8 @@ type Phase = 'title' | 'shift' | 'report'
 
 const INTERACT_RANGE = 2.4
 const MAX_DT = 1 / 20
+/** Screen centre, where the crosshair is. Reused so the hot loop allocates nothing. */
+const CENTER = new THREE.Vector2(0, 0)
 
 export class Game {
   private readonly renderer: Renderer
@@ -28,6 +31,10 @@ export class Game {
 
   private phase: Phase = 'title'
   private lastFrame = 0
+  private reading = false
+
+  private readonly interactObjects: THREE.Object3D[]
+  private readonly byObject = new Map<THREE.Object3D, Interactable>()
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new Renderer(canvas)
@@ -35,6 +42,9 @@ export class Game {
 
     this.store = buildStore()
     this.scene.add(this.store.root)
+
+    this.interactObjects = this.store.interactables.map((entry) => entry.object)
+    for (const entry of this.store.interactables) this.byObject.set(entry.object, entry)
 
     this.player = new Player(this.renderer.aspect)
     this.input = new Input(canvas, this.hud.touchUi)
@@ -89,36 +99,54 @@ export class Game {
   }
 
   private updateShift(dt: number): void {
+    // The clock never stops for reading a box. Browsing on the job has a cost.
     this.clock.advance(dt)
-    this.player.update(dt, this.input, this.store.colliders)
     this.jobs.update(dt, this.clock.progress, this.scorecard)
-
-    const target = this.findTarget()
-    this.hud.setPrompt(target ? target.label : null)
-    this.hud.setInteractEnabled(target !== null)
-    if (this.input.consumeInteract() && target) {
-      this.jobs.complete(target.kind, this.scorecard)
-    }
-
     this.hud.setClock(this.clock.format())
     this.hud.setJobs(this.jobs.jobs)
+
+    if (this.reading) {
+      this.updateReading()
+    } else {
+      this.player.update(dt, this.input, this.store.colliders)
+
+      const target = this.findTarget()
+      this.hud.setPrompt(target ? target.label : null)
+      this.hud.setInteractEnabled(target !== null)
+
+      if (this.input.consumeInteract() && target) {
+        if (target.kind === 'station') this.jobs.complete(target.station, this.scorecard)
+        else this.openCase(target.title)
+      }
+    }
 
     if (this.clock.isOver) this.endShift()
   }
 
-  private findTarget(): Interactable | null {
-    this.raycaster.setFromCamera(new THREE.Vector2(0, 0), this.player.camera)
+  private openCase(title: Title): void {
+    this.reading = true
+    this.hud.showCase(title)
+    this.hud.setPrompt(null)
+    this.input.releaseLock()
+  }
 
-    let closest: Interactable | null = null
-    let closestDistance = Infinity
-    for (const interactable of this.store.interactables) {
-      const hits = this.raycaster.intersectObject(interactable.object, false)
-      const hit = hits[0]
-      if (hit && hit.distance < closestDistance) {
-        closestDistance = hit.distance
-        closest = interactable
-      }
+  private updateReading(): void {
+    // Drain look input so a drag behind the panel does not spin the camera while reading.
+    this.input.takeLook()
+    if (this.input.consumeInteract() || this.input.consumeCancel() || this.hud.caseDismissed()) {
+      this.reading = false
+      this.hud.hideCase()
+      this.input.requestLock()
     }
-    return closest
+  }
+
+  /**
+   * One batched raycast against every interactable at once. Casting per interactable was fine
+   * for five stations; it is not once every case on the New Release wall is readable.
+   */
+  private findTarget(): Interactable | null {
+    this.raycaster.setFromCamera(CENTER, this.player.camera)
+    const hit = this.raycaster.intersectObjects(this.interactObjects, false)[0]
+    return hit ? this.byObject.get(hit.object) ?? null : null
   }
 }

@@ -1,5 +1,6 @@
 import type { Job } from '../sim/Tasks'
 import type { ReportLine } from '../sim/Scorecard'
+import { GENRE_LABEL, type Title } from '../data/catalog'
 import type { TouchUiElements } from '../core/Input'
 import { isTouchDevice } from '../core/TouchControls'
 
@@ -19,6 +20,13 @@ export class Hud {
   private readonly reportLines = need('report-lines')
   private readonly reportVerdict = need('report-verdict')
   private readonly interactButton = need('btn-interact')
+  private readonly casePanel = need('case-panel')
+  private readonly caseTitle = need('case-title')
+  private readonly caseTagline = need('case-tagline')
+  private readonly caseMeta = need('case-meta')
+  private readonly caseSynopsis = need('case-synopsis')
+  private readonly caseStarring = need('case-starring')
+  private caseWasDismissed = false
 
   readonly touchUi: TouchUiElements = {
     root: need('touch-ui'),
@@ -36,6 +44,9 @@ export class Hud {
   constructor() {
     need('btn-start').addEventListener('click', () => this.onStart?.())
     need('btn-again').addEventListener('click', () => this.onStart?.())
+    need('btn-case-close').addEventListener('click', () => {
+      this.caseWasDismissed = true
+    })
   }
 
   showTitle(): void {
@@ -64,6 +75,40 @@ export class Hud {
   /** Dims the on-screen interact button when nothing is in range to act on. */
   setInteractEnabled(enabled: boolean): void {
     this.interactButton.classList.toggle('enabled', enabled)
+  }
+
+  /** The back of the box, as the player turns it over in their hands. */
+  showCase(title: Title): void {
+    this.caseWasDismissed = false
+    this.caseTitle.textContent = title.title
+    this.caseTagline.textContent = title.tagline
+    this.caseSynopsis.textContent = title.synopsis
+    this.caseStarring.textContent = `Starring ${title.starring[0]} and ${title.starring[1]}`
+    this.caseMeta.replaceChildren(
+      ...[
+        GENRE_LABEL[title.genre],
+        String(title.year),
+        title.rating,
+        `${title.runtime} min`,
+        ...(title.newRelease ? ['New Release'] : []),
+      ].map((text) => {
+        const chip = document.createElement('span')
+        chip.textContent = text
+        return chip
+      }),
+    )
+    this.casePanel.hidden = false
+  }
+
+  hideCase(): void {
+    this.casePanel.hidden = true
+  }
+
+  /** True once if the player dismissed the case with the on-screen close button. */
+  caseDismissed(): boolean {
+    const dismissed = this.caseWasDismissed
+    this.caseWasDismissed = false
+    return dismissed
   }
 
   setJobs(jobs: readonly Job[]): void {

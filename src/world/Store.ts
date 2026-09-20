@@ -2,8 +2,9 @@ import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { createPS1Material } from '../render/ps1Material'
 import { boxArtTexture } from '../render/boxArt'
+import { lacklusterLogoTexture } from '../render/logoTexture'
 import { BRAND, GENRE_COLOR, ROOM } from '../render/palette'
-import { CATALOG, newReleases, type Genre } from '../data/catalog'
+import { CATALOG, newReleases, type Genre, type Title } from '../data/catalog'
 
 /** Store footprint, in meters. A small strip-mall unit. */
 export const STORE = {
@@ -14,13 +15,13 @@ export const STORE = {
   height: 3.4,
 } as const
 
-export type InteractKind = 'rewind' | 'returns' | 'register' | 'restock' | 'shelf'
+/** The five places work happens. Every job on the board resolves at one of them. */
+export type StationKind = 'rewind' | 'returns' | 'register' | 'restock' | 'shelf'
 
-export interface Interactable {
-  object: THREE.Object3D
-  label: string
-  kind: InteractKind
-}
+/** Doing a job, versus picking a case up to read the back of it — different verbs entirely. */
+export type Interactable =
+  | { object: THREE.Object3D; label: string; kind: 'station'; station: StationKind }
+  | { object: THREE.Object3D; label: string; kind: 'inspect'; title: Title }
 
 export interface BuiltStore {
   root: THREE.Group
@@ -32,8 +33,182 @@ const VHS = { width: 0.028, height: 0.19, depth: 0.11 } as const
 const GONDOLA = { length: 12, depth: 0.55, height: 1.7 } as const
 const TIER_Y = [0.4, 0.86, 1.32] as const
 
+const GLASS = { sillY: 0.5, headY: 2.7 } as const
+/** The lot sits a step down from the shop floor, so there is a curb to read at the threshold. */
+const LOT_Y = -0.16
+
 function box(width: number, height: number, depth: number, color: number): THREE.Mesh {
   return new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), createPS1Material({ color }))
+}
+
+function unlitBox(width: number, height: number, depth: number, color: number): THREE.Mesh {
+  return new THREE.Mesh(
+    new THREE.BoxGeometry(width, height, depth),
+    createPS1Material({ color, unlit: true }),
+  )
+}
+
+/**
+ * Full-height shopfront glazing. The first pass had a near-black pane here, which made the wall
+ * the player spawns facing into a dead surface and cost the room its only source of depth beyond
+ * the back wall.
+ */
+function buildStorefront(root: THREE.Group): void {
+  const width = STORE.maxX - STORE.minX
+  const cx = (STORE.minX + STORE.maxX) / 2
+  const z = STORE.maxZ
+
+  // Kickplate below the glass and the bulkhead above it, both in house blue.
+  const kick = box(width, GLASS.sillY, 0.18, BRAND.blue)
+  kick.position.set(cx, GLASS.sillY / 2, z)
+  root.add(kick)
+
+  const bulkhead = box(width, STORE.height - GLASS.headY, 0.18, BRAND.blue)
+  bulkhead.position.set(cx, (STORE.height + GLASS.headY) / 2, z)
+  root.add(bulkhead)
+
+  const bulkheadTrim = box(width, 0.1, 0.22, BRAND.yellow)
+  bulkheadTrim.position.set(cx, GLASS.headY + 0.1, z)
+  root.add(bulkheadTrim)
+
+  // One continuous pane, drawn last and without depth writes so the lot reads through it.
+  const glassMaterial = createPS1Material({
+    color: 0x9fc4d8,
+    opacity: 0.16,
+    side: THREE.DoubleSide,
+    unlit: true,
+  })
+  glassMaterial.depthWrite = false
+  const glass = new THREE.Mesh(new THREE.PlaneGeometry(width, GLASS.headY - GLASS.sillY), glassMaterial)
+  glass.position.set(cx, (GLASS.sillY + GLASS.headY) / 2, z)
+  glass.renderOrder = 2
+  root.add(glass)
+
+  // Mullions every few metres, with a wider gap left where the entrance sits.
+  const doorCenter = -1
+  const doorHalfWidth = 1.1
+  for (let x = STORE.minX; x <= STORE.maxX + 0.01; x += 2.4) {
+    if (Math.abs(x - doorCenter) < doorHalfWidth + 0.3) continue
+    const mullion = box(0.12, GLASS.headY - GLASS.sillY, 0.2, BRAND.blueDark)
+    mullion.position.set(x, (GLASS.sillY + GLASS.headY) / 2, z)
+    root.add(mullion)
+  }
+
+  // Entrance: two posts and a header, with the automatic-door rail above.
+  for (const side of [-1, 1] as const) {
+    const post = box(0.16, GLASS.headY, 0.24, BRAND.blueDark)
+    post.position.set(doorCenter + side * doorHalfWidth, GLASS.headY / 2, z)
+    root.add(post)
+  }
+  const doorHeader = box(doorHalfWidth * 2 + 0.3, 0.22, 0.24, BRAND.blueDark)
+  doorHeader.position.set(doorCenter, GLASS.headY - 0.11, z)
+  root.add(doorHeader)
+
+  // Both faces of the storefront sign, so it reads from the aisle and from the lot.
+  const logo = lacklusterLogoTexture()
+  for (const facing of [-1, 1] as const) {
+    const sign = new THREE.Mesh(
+      new THREE.PlaneGeometry(3.6, 1.58),
+      createPS1Material({ map: logo, unlit: facing === 1 }),
+    )
+    sign.position.set(cx + 3, STORE.height - 0.4, z - facing * 0.12)
+    if (facing === -1) sign.rotation.y = Math.PI
+    root.add(sign)
+  }
+
+}
+
+/** Night lot beyond the glass: enough to give the windows something to be windows onto. */
+function buildParkingLot(root: THREE.Group): void {
+  const cx = (STORE.minX + STORE.maxX) / 2
+  const lotDepth = 26
+  const lotCenterZ = STORE.maxZ + lotDepth / 2
+
+  const asphalt = new THREE.Mesh(
+    new THREE.PlaneGeometry(52, lotDepth),
+    createPS1Material({ color: 0x3f434b }),
+  )
+  asphalt.rotation.x = -Math.PI / 2
+  asphalt.position.set(cx, LOT_Y, lotCenterZ)
+  root.add(asphalt)
+
+  const curb = box(52, 0.18, 0.4, 0x8b8b84)
+  curb.position.set(cx, LOT_Y + 0.09, STORE.maxZ + 0.6)
+  root.add(curb)
+
+  // Bay stripes, merged into one mesh — there is no reason for thirty draw calls of paint.
+  const stripes: THREE.BufferGeometry[] = []
+  for (let i = 0; i < 16; i += 1) {
+    const stripe = new THREE.PlaneGeometry(0.12, 5)
+    stripe.rotateX(-Math.PI / 2)
+    stripe.translate(-18 + i * 2.5, LOT_Y + 0.01, STORE.maxZ + 4.2)
+    stripes.push(stripe)
+  }
+  const stripeGeometry = mergeGeometries(stripes, false)
+  for (const geometry of stripes) geometry.dispose()
+  if (stripeGeometry) root.add(new THREE.Mesh(stripeGeometry, createPS1Material({ color: 0xd8d2b8 })))
+
+  // Parked in the bays nearest the door, where they are actually in view from inside.
+  car(root, -6, STORE.maxZ + 4.2, 0x8c2f2a)
+  car(root, -1.6, STORE.maxZ + 4.2, 0x6f7480)
+  car(root, 3.2, STORE.maxZ + 4.2, 0xb7b2a6)
+  car(root, 8.4, STORE.maxZ + 4.2, 0x3f5a3a)
+
+  lampPost(root, -11, STORE.maxZ + 8)
+  lampPost(root, 7, STORE.maxZ + 8)
+}
+
+/** Six boxes and two lamps. At this distance and this resolution, that is a car. */
+function car(root: THREE.Group, x: number, z: number, color: number): void {
+  const group = new THREE.Group()
+
+  const body = box(1.85, 0.62, 4.3, color)
+  body.position.y = 0.62
+  group.add(body)
+
+  const cabin = box(1.66, 0.56, 2.1, color)
+  cabin.position.set(0, 1.2, -0.15)
+  group.add(cabin)
+
+  const glazing = box(1.7, 0.4, 1.9, 0x1b2028)
+  glazing.position.set(0, 1.22, -0.15)
+  group.add(glazing)
+
+  for (const side of [-1, 1] as const) {
+    for (const end of [-1, 1] as const) {
+      const wheel = box(0.22, 0.52, 0.52, 0x17181c)
+      wheel.position.set(side * 0.92, 0.3, end * 1.45)
+      group.add(wheel)
+    }
+  }
+
+  for (const side of [-1, 1] as const) {
+    const tail = unlitBox(0.34, 0.12, 0.05, 0xd0453a)
+    tail.position.set(side * 0.62, 0.78, 2.16)
+    group.add(tail)
+  }
+
+  group.position.set(x, LOT_Y, z)
+  root.add(group)
+}
+
+function lampPost(root: THREE.Group, x: number, z: number): void {
+  const pole = box(0.16, 6, 0.16, 0x4a4d52)
+  pole.position.set(x, LOT_Y + 3, z)
+  root.add(pole)
+
+  const head = unlitBox(1.1, 0.16, 0.5, 0xfff1c4)
+  head.position.set(x, LOT_Y + 6, z)
+  root.add(head)
+
+  // A faint pool of light on the asphalt, so the lamp reads as doing something.
+  const pool = new THREE.Mesh(
+    new THREE.PlaneGeometry(7, 7),
+    createPS1Material({ color: 0x6d6852, opacity: 0.5, unlit: true }),
+  )
+  pool.rotation.x = -Math.PI / 2
+  pool.position.set(x, LOT_Y + 0.02, z)
+  root.add(pool)
 }
 
 /** Places a mesh by its center and returns a collider for it. */
@@ -93,13 +268,8 @@ export function buildStore(): BuiltStore {
   stripe(depth, STORE.minX + 0.05, cz, Math.PI / 2)
   stripe(depth, STORE.maxX - 0.05, cz, -Math.PI / 2)
 
-  // Storefront glass: a dark pane so the room reads as interior-at-night.
-  const glass = new THREE.Mesh(
-    new THREE.PlaneGeometry(width, STORE.height),
-    createPS1Material({ color: 0x0c111c, opacity: 0.85, side: THREE.DoubleSide }),
-  )
-  glass.position.set(cx, STORE.height / 2, STORE.maxZ)
-  root.add(glass)
+  buildStorefront(root)
+  buildParkingLot(root)
 
   // Walls are colliders as thin slabs, so the player cannot walk through them.
   const bound = 0.4
@@ -188,7 +358,7 @@ export function buildStore(): BuiltStore {
     )
     shelfHitbox.position.set(x, GONDOLA.height / 2, gondolaCenterZ)
     root.add(shelfHitbox)
-    interactables.push({ object: shelfHitbox, label: 'Shelve a tape', kind: 'shelf' })
+    interactables.push({ object: shelfHitbox, label: 'Shelve a tape', kind: 'station', station: 'shelf' })
   })
 
   for (const [genre, geometries] of spinesByGenre) {
@@ -204,9 +374,11 @@ export function buildStore(): BuiltStore {
   // that one" reads from across the store.
   const releases = newReleases()
   const facingPool = releases.length >= 6 ? releases : [...releases, ...CATALOG.slice(0, 12)]
-  const FACING = { width: 0.26, height: 0.45, tilt: -0.28 }
+  // Faced almost edge to edge, the way a release wall actually looks — and it means the
+  // crosshair lands on a case rather than in the gap between two of them.
+  const FACING = { width: 0.38, height: 0.52, tilt: -0.28 }
   // Spans the full width of the aisles, so the wall is the thing you see at the end of any of them.
-  const RACK = { columns: 26, rows: 3, startX: -8, spacingX: 0.42, topY: 2.05, spacingY: 0.52 }
+  const RACK = { columns: 26, rows: 3, startX: -8, spacingX: 0.42, topY: 2.05, spacingY: 0.6 }
   const wallZ = STORE.minZ + 0.04
 
   const tagGeometries: THREE.BufferGeometry[] = []
@@ -241,6 +413,7 @@ export function buildStore(): BuiltStore {
       facing.rotation.x = FACING.tilt
       facing.position.set(x, y, wallZ + 0.09)
       root.add(facing)
+      interactables.push({ object: facing, label: `Read ${title.title}`, kind: 'inspect', title })
     }
   }
 
@@ -268,19 +441,19 @@ export function buildStore(): BuiltStore {
 
   const register = box(0.5, 0.35, 0.4, 0x3a3a42)
   place(root, register, 8.2, 1.28, 4.5)
-  interactables.push({ object: register, label: 'Ring up a customer', kind: 'register' })
+  interactables.push({ object: register, label: 'Ring up a customer', kind: 'station', station: 'register' })
 
   const returnBin = box(0.9, 0.7, 0.7, BRAND.blueDark)
   colliders.push(place(root, returnBin, 4, 0.35, 5.6))
-  interactables.push({ object: returnBin, label: 'Check the return bin', kind: 'returns' })
+  interactables.push({ object: returnBin, label: 'Check the return bin', kind: 'station', station: 'returns' })
 
   const rewindDeck = box(0.6, 0.22, 0.45, 0x26262c)
   place(root, rewindDeck, 6.2, 1.22, 4.5)
-  interactables.push({ object: rewindDeck, label: 'Rewind a tape', kind: 'rewind' })
+  interactables.push({ object: rewindDeck, label: 'Rewind a tape', kind: 'station', station: 'rewind' })
 
   const crate = box(0.8, 0.5, 0.6, 0x7d6a4f)
   colliders.push(place(root, crate, 9.5, 0.25, 1.5))
-  interactables.push({ object: crate, label: 'Open the shipment crate', kind: 'restock' })
+  interactables.push({ object: crate, label: 'Open the shipment crate', kind: 'station', station: 'restock' })
 
   // --- Shopping baskets by the door ---
   // The yellow basket is the most recognizable loose prop in the whole store, so it is worth
@@ -302,9 +475,11 @@ export function buildStore(): BuiltStore {
     shell[4]?.position.set(size.w / 2, 0, 0)
     for (const part of shell) if (part) group.add(part)
 
-    // The blue wordmark panel on the long side.
-    const label = box(size.w * 0.6, 0.09, 0.01, BRAND.blue)
-    label.position.set(0, 0.01, size.d / 2 + 0.01)
+    const label = new THREE.Mesh(
+      new THREE.PlaneGeometry(size.w * 0.66, 0.1),
+      createPS1Material({ map: lacklusterLogoTexture({ width: 128, height: 32, compact: true }) }),
+    )
+    label.position.set(0, 0.01, size.d / 2 + 0.012)
     group.add(label)
 
     group.position.set(x, y, z)
@@ -314,11 +489,34 @@ export function buildStore(): BuiltStore {
   basket(10.4, 0.35, 6.6)
   basket(10.4, 0.58, 6.6)
 
-  // --- Signage: the store's own name, backwards to you, facing the street ---
-  const brandBar = box(6, 0.8, 0.1, BRAND.blue)
-  place(root, brandBar, 0, 2.6, STORE.maxZ - 0.15)
-  const brandBarAccent = box(6.3, 0.16, 0.08, BRAND.yellow)
-  place(root, brandBarAccent, 0, 2.6, STORE.maxZ - 0.2)
+  // --- Branding around the sales floor ---
+  const counterLogo = new THREE.Mesh(
+    new THREE.PlaneGeometry(2.4, 1.05),
+    createPS1Material({ map: lacklusterLogoTexture() }),
+  )
+  counterLogo.position.set(6, 0.62, 4.5 - 0.46)
+  counterLogo.rotation.y = Math.PI
+  root.add(counterLogo)
+
+  // Aisle markers hung over each run, so the store brands itself from anywhere on the floor.
+  const aisleLogo = lacklusterLogoTexture({ width: 128, height: 32, compact: true })
+  for (const x of gondolaX) {
+    const marker = new THREE.Mesh(
+      new THREE.PlaneGeometry(1.5, 0.38),
+      createPS1Material({ map: aisleLogo, side: THREE.DoubleSide }),
+    )
+    marker.position.set(x, 2.5, gondolaCenterZ)
+    marker.rotation.y = Math.PI / 2
+    root.add(marker)
+  }
+
+  // Back wall, above the New Release rack.
+  const wallLogo = new THREE.Mesh(
+    new THREE.PlaneGeometry(3.4, 1.5),
+    createPS1Material({ map: lacklusterLogoTexture() }),
+  )
+  wallLogo.position.set(8, 2.1, STORE.minZ + 0.06)
+  root.add(wallLogo)
 
   return { root, colliders, interactables }
 }

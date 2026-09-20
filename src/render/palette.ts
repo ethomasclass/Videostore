@@ -49,4 +49,4 @@ export const GENRE_COLOR = {
  * Interior haze only. The room is 18m deep, so fog that starts close crushes the whole store
  * to black — it needs to stay a soft falloff on the far wall, not a darkness the player walks into.
  */
-export const FOG = { color: 0x2a3242, near: 14, far: 42 } as const
+export const FOG = { color: 0x2a3242, near: 14, far: 58 } as const
