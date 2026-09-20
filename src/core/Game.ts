@@ -11,6 +11,7 @@ import { Scorecard, VERDICT_COPY } from '../sim/Scorecard'
 import { Hud } from '../ui/hud'
 import { Terminal } from '../ui/terminal'
 import { StoreRadio } from '../audio/StoreRadio'
+import { Sfx } from '../audio/Sfx'
 import { Hands } from '../world/Hands'
 import { Customer } from '../sim/Customer'
 import type { StationKind } from '../world/Store'
@@ -34,6 +35,7 @@ export class Game {
   private readonly hud = new Hud()
   private readonly radio = new StoreRadio()
   private readonly terminal = new Terminal()
+  private readonly sfx = new Sfx()
   private readonly hands = new Hands()
   private readonly customer = new Customer()
   private readonly raycaster = new THREE.Raycaster()
@@ -45,6 +47,11 @@ export class Game {
   /** An action in progress: the player is pinned in place until its animation finishes. */
   private busy: { station: StationKind; timeLeft: number } | null = null
   private customerJobId: number | null = null
+  /** The deck keeps running after the hands are done, so the job settles when it ejects. */
+  private rewindPending = false
+  /** 0 at the player's own eyes, 1 parked in front of the terminal's CRT. */
+  private monitorZoom = 0
+  private readonly monitorQuaternion = new THREE.Quaternion()
 
   private readonly interactObjects: THREE.Object3D[]
   private readonly byObject = new Map<THREE.Object3D, Interactable>()
@@ -66,6 +73,14 @@ export class Game {
     this.scene.add(this.customer.root)
 
     this.input = new Input(canvas, this.hud.touchUi)
+
+    // The monitor pose is fixed, so resolve its orientation once rather than every frame.
+    const framing = new THREE.Object3D()
+    framing.position.copy(this.store.monitorView.position)
+    framing.lookAt(this.store.monitorView.target)
+    this.monitorQuaternion.copy(framing.quaternion)
+
+    this.terminal.setKeyPressListener(() => this.sfx.keyClick())
 
     this.raycaster.far = INTERACT_RANGE
     this.hud.onStart = () => this.startShift()
@@ -109,6 +124,8 @@ export class Game {
     this.busy = null
     this.customerJobId = null
     this.customer.reset()
+    this.rewindPending = false
+    this.monitorZoom = 0
     this.phase = 'shift'
     this.hud.showShift()
     this.input.requestLock()
@@ -146,6 +163,12 @@ export class Game {
     this.customer.update(dt)
     this.syncCustomerJob()
 
+    this.store.rewinder.update(dt, this.sfx)
+    if (this.rewindPending && !this.store.rewinder.isRunning) {
+      this.rewindPending = false
+      this.jobs.complete('rewind', this.scorecard)
+    }
+
     if (this.terminal.isOpen) {
       this.updateTerminal()
     } else if (this.reading) {
@@ -174,6 +197,18 @@ export class Game {
     }
 
     this.hands.update(dt, this.player.isMoving)
+    this.applyMonitorZoom(dt)
+
+    // Dev-only probe. Scripted playtests need to know where they ended up; dead reckoning
+    // through acceleration and collisions does not survive contact with the floor plan.
+    if (import.meta.env.DEV) {
+      ;(window as unknown as Record<string, unknown>).__probe = {
+        pos: this.player.position.toArray().map((n) => Number(n.toFixed(2))),
+        customer: this.customer.state,
+        rewinding: this.store.rewinder.isRunning,
+        zoom: Number(this.monitorZoom.toFixed(2)),
+      }
+    }
 
     if (this.clock.isOver) this.endShift()
   }
@@ -199,14 +234,49 @@ export class Game {
 
     this.busy = { station, timeLeft: this.hands.play(station) }
     this.player.frozen = true
+
+    switch (station) {
+      case 'shelf':
+        this.sfx.shelfPlace(0.6)
+        break
+      case 'rewind':
+        // Load the tape, then walk away — the deck finishes on its own time.
+        this.sfx.deckOpen()
+        this.store.rewinder.start()
+        this.rewindPending = true
+        break
+      case 'returns':
+      case 'restock':
+        this.sfx.thud(0.35)
+        break
+    }
+  }
+
+  /**
+   * Slides the view from the player's own eyes to a fixed pose in front of the CRT. Blending
+   * every frame off the player's current pose means the shot stays correct however they were
+   * standing when they leaned in.
+   */
+  private applyMonitorZoom(dt: number): void {
+    const wanted = this.terminal.isOpen ? 1 : 0
+    this.monitorZoom = THREE.MathUtils.damp(this.monitorZoom, wanted, 9, dt)
+
+    this.hands.root.visible = this.monitorZoom < 0.45
+    if (this.monitorZoom < 0.001) return
+
+    const camera = this.player.camera
+    camera.position.lerp(this.store.monitorView.position, this.monitorZoom)
+    camera.quaternion.slerp(this.monitorQuaternion, this.monitorZoom)
   }
 
   private finishAction(): void {
     const station = this.busy?.station
     this.busy = null
     this.player.frozen = false
-    // A register action was already settled by the terminal; the rest resolve on completion.
-    if (station && station !== 'register') this.jobs.complete(station, this.scorecard)
+    // The register is settled by the terminal, and the rewinder settles when the deck ejects.
+    if (station && station !== 'register' && station !== 'rewind') {
+      this.jobs.complete(station, this.scorecard)
+    }
   }
 
   private updateTerminal(): void {
@@ -220,6 +290,7 @@ export class Game {
         this.customerJobId = null
       }
       this.customer.serve()
+      this.sfx.receipt()
       this.busy = { station: 'register', timeLeft: this.hands.play('register') }
       this.player.frozen = true
       return

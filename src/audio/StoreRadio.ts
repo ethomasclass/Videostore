@@ -1,3 +1,5 @@
+import { audioContext, audioMaster, resumeAudio } from './context'
+
 /**
  * The in-store music bed. An original composition, synthesised on the fly rather than streamed:
  * a period-correct store loop is a few kilobytes of arithmetic, and shipping one as audio would
@@ -69,7 +71,7 @@ export class StoreRadio {
     const context = this.context
     if (!context) return
 
-    void context.resume()
+    resumeAudio()
     if (this.timer !== null) return
 
     this.step = 0
@@ -82,7 +84,7 @@ export class StoreRadio {
       window.clearInterval(this.timer)
       this.timer = null
     }
-    void this.context?.suspend()
+    // The context is shared with the sound effects, so stopping the music must not suspend it.
   }
 
   toggleMute(): boolean {
@@ -94,9 +96,9 @@ export class StoreRadio {
   }
 
   private build(): void {
-    const Ctor = window.AudioContext ?? (window as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-    if (!Ctor) return
-    const context = new Ctor()
+    const context = audioContext()
+    const output = audioMaster()
+    if (!context || !output) return
 
     // Ceiling speakers in a carpeted room: no top end, and a slap of space around everything.
     const master = context.createGain()
@@ -119,7 +121,7 @@ export class StoreRadio {
     feedback.connect(delay)
     delay.connect(wet)
     wet.connect(master)
-    master.connect(context.destination)
+    master.connect(output)
 
     this.context = context
     this.master = master
@@ -272,7 +274,6 @@ export class StoreRadio {
 
   dispose(): void {
     this.stop()
-    void this.context?.close()
     this.context = null
     this.master = null
     this.bus = null

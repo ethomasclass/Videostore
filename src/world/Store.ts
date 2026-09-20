@@ -8,6 +8,8 @@ import { BRAND, GENRE_COLOR, ROOM } from '../render/palette'
 import { CATALOG, newReleases, type Genre, type Title } from '../data/catalog'
 import { box, unlitBox, hitbox, panel, place, DOORS, FRONT_SOLID_HALF, STORE, VHS } from './buildKit'
 import { buildParkingLot, buildStorefront } from './exterior'
+import { carpetTexture, lightPoolTexture } from '../render/carpetTexture'
+import { Rewinder } from './Rewinder'
 
 export { STORE } from './buildKit'
 
@@ -23,6 +25,9 @@ export interface BuiltStore {
   root: THREE.Group
   colliders: THREE.Box3[]
   interactables: Interactable[]
+  rewinder: Rewinder
+  /** Where the camera sits, and what it looks at, when the player is on the terminal. */
+  monitorView: { position: THREE.Vector3; target: THREE.Vector3 }
 }
 
 /** Where the player clocks in: just inside the entrance, looking down the first aisle. */
@@ -63,6 +68,8 @@ interface Build {
   colliders: THREE.Box3[]
   interactables: Interactable[]
   addItem: (color: number, x: number, y: number, z: number, item: Item) => void
+  rewinder: Rewinder
+  monitorView: { position: THREE.Vector3; target: THREE.Vector3 }
 }
 
 interface Item {
@@ -92,7 +99,14 @@ export function buildStore(): BuiltStore {
     else itemsByColor.set(color, [geometry])
   }
 
-  const build: Build = { root, colliders, interactables, addItem }
+  const build: Build = {
+    root,
+    colliders,
+    interactables,
+    addItem,
+    rewinder: new Rewinder(),
+    monitorView: { position: new THREE.Vector3(), target: new THREE.Vector3() },
+  }
 
   buildShell(build)
   buildStorefront(root)
@@ -111,7 +125,7 @@ export function buildStore(): BuiltStore {
     if (merged) root.add(new THREE.Mesh(merged, createPS1Material({ color })))
   }
 
-  return { root, colliders, interactables }
+  return { root, colliders, interactables, rewinder: build.rewinder, monitorView: build.monitorView }
 }
 
 function buildShell({ root, colliders }: Build): void {
@@ -120,7 +134,12 @@ function buildShell({ root, colliders }: Build): void {
   const cx = (STORE.minX + STORE.maxX) / 2
   const cz = (STORE.minZ + STORE.maxZ) / 2
 
-  const floor = panel(width, depth, { color: ROOM.carpet })
+  // Tessellated on purpose. Affine texture error grows with polygon size, so the carpet on one
+  // 24x18 quad smears into streaks; at roughly a metre per quad the warp is back to a shimmer.
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(width, depth, width, depth),
+    createPS1Material({ map: carpetTexture(width, depth) }),
+  )
   floor.rotation.x = -Math.PI / 2
   floor.position.set(cx, 0, cz)
   root.add(floor)
@@ -179,12 +198,27 @@ function buildShell({ root, colliders }: Build): void {
   )
 
   const troffer = createPS1Material({ color: ROOM.light, unlit: true })
+  // Pools of light laid on the carpet under each fixture. The lighting model is per-vertex with
+  // no falloff, so without these the floor takes one flat value and the troffers light nothing.
+  const poolMaterial = createPS1Material({ map: lightPoolTexture(), unlit: true, opacity: 0.34 })
+  poolMaterial.blending = THREE.AdditiveBlending
+  poolMaterial.depthWrite = false
+
   for (let i = 0; i < 5; i += 1) {
     for (let j = 0; j < 3; j += 1) {
+      const x = -9.5 + i * 4.8
+      const z = -6 + j * 5
+
       const lamp = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 0.9), troffer)
       lamp.rotation.x = Math.PI / 2
-      lamp.position.set(-9.5 + i * 4.8, STORE.height - 0.02, -6 + j * 5)
+      lamp.position.set(x, STORE.height - 0.02, z)
       root.add(lamp)
+
+      const pool = new THREE.Mesh(new THREE.PlaneGeometry(7.2, 5.4, 6, 5), poolMaterial)
+      pool.rotation.x = -Math.PI / 2
+      pool.position.set(x, 0.015, z)
+      pool.renderOrder = 1
+      root.add(pool)
     }
   }
 }
@@ -494,18 +528,37 @@ function buildCounter(build: Build): void {
   place(root, keyboard, -1.3, top + 0.04, frontZ - 0.38)
   station('Use the rental system', 'register', [2.2, 1.1, 1.5], [-1.3, top + 0.3, frontZ - 0.2])
 
-  const rewindDeck = box(0.6, 0.22, 0.45, 0x26262c)
-  place(root, rewindDeck, 1.6, top + 0.13, frontZ)
-  place(root, unlitBox(0.1, 0.03, 0.02, 0x6fe07a), 1.82, top + 0.16, frontZ - 0.24)
-  station('Rewind a tape', 'rewind', [1.5, 1.1, 1.5], [1.6, top + 0.3, frontZ - 0.2])
+  build.rewinder.root.position.set(1.6, top + 0.02, frontZ + 0.1)
+  build.rewinder.root.rotation.y = Math.PI
+  root.add(build.rewinder.root)
+  station('Rewind a tape', 'rewind', [1.5, 1.1, 1.5], [1.6, top + 0.3, frontZ - 0.1])
 
+  // Tucked against the outside of the left wing. In the middle of the floor it stood squarely
+  // in the only lane between the two doors.
   const returnBin = box(0.9, 0.7, 0.7, BRAND.blueDark)
-  colliders.push(place(root, returnBin, -halfWidth - 0.9, 0.35, frontZ - 0.2))
-  station('Check the return bin', 'returns', [1.4, 1.5, 1.2], [-halfWidth - 0.9, 0.7, frontZ - 0.2])
+  colliders.push(place(root, returnBin, -halfWidth - 0.6, 0.35, frontZ + 0.6))
+  place(root, box(0.7, 0.05, 0.4, ROOM.shelfTrim), -halfWidth - 0.6, 0.72, frontZ + 0.6)
+  station('Check the return bin', 'returns', [1.3, 1.5, 1.2], [-halfWidth - 0.6, 0.7, frontZ + 0.6])
 
+  // Against the feature wall in the corner, off the staff walkway it used to sit in.
   const crate = box(0.8, 0.5, 0.6, 0x7d6a4f)
-  colliders.push(place(root, crate, -2.2, 0.25, backZ + 0.55))
-  station('Open the shipment crate', 'restock', [1.3, 1.3, 1.1], [-2.2, 0.55, backZ + 0.55])
+  colliders.push(place(root, crate, -4.3, 0.25, FEATURE_WALL_Z - 0.62))
+  station('Open the shipment crate', 'restock', [1.3, 1.3, 1.1], [-4.3, 0.55, FEATURE_WALL_Z - 0.62])
+
+  // --- The terminal itself: a beige CRT facing the staff side of the counter ---
+  const monitorX = -1.3
+  const monitorZ = frontZ + 0.18
+  const monitorY = top + 0.21
+
+  place(root, box(0.3, 0.05, 0.28, 0xb8b19c), monitorX, top + 0.05, monitorZ)
+  place(root, box(0.44, 0.38, 0.4, 0xc9c2ad), monitorX, monitorY, monitorZ)
+  place(root, box(0.36, 0.28, 0.02, 0x1d1c18), monitorX, monitorY + 0.01, monitorZ + 0.2)
+  const screen = panel(0.3, 0.22, { color: 0x6b4a12, unlit: true })
+  screen.position.set(monitorX, monitorY + 0.01, monitorZ + 0.215)
+  root.add(screen)
+
+  build.monitorView.position.set(monitorX, monitorY + 0.06, monitorZ + 0.78)
+  build.monitorView.target.set(monitorX, monitorY + 0.01, monitorZ + 0.2)
 }
 
 /**

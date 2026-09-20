@@ -75,7 +75,9 @@ export class Input {
   }
 
   releaseLock(): void {
-    if (this.locked) document.exitPointerLock()
+    // Unconditional: `locked` tracks an event that may not have landed yet, and a missed release
+    // leaves the cursor captured with a modal open, which reads as the UI being dead.
+    if (document.exitPointerLock) document.exitPointerLock()
   }
 
   get movement(): Movement {

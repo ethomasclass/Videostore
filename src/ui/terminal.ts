@@ -35,11 +35,30 @@ export class Terminal {
   private transaction: Transaction | null = null
   private completed = false
   private closed = false
+  /** Function key -> action, rebuilt with every screen. Keyboard is the primary interface. */
+  private bindings = new Map<string, () => void>()
+  private onKeyPress: ((key: string) => void) | null = null
 
   constructor() {
     need('terminal-close').addEventListener('click', () => {
       this.closed = true
     })
+
+    // These were keyboard terminals, and the player's cursor is captured by pointer lock for
+    // most of a shift — so every row is reachable by key, and clicking is the extra.
+    window.addEventListener('keydown', (event) => {
+      if (this.panel.hidden) return
+      const action = this.bindings.get(event.code)
+      if (!action) return
+      event.preventDefault()
+      this.onKeyPress?.(event.code)
+      action()
+    })
+  }
+
+  /** Lets the caller play a keyswitch click without the terminal knowing about audio. */
+  setKeyPressListener(listener: (key: string) => void): void {
+    this.onKeyPress = listener
   }
 
   get isOpen(): boolean {
@@ -80,17 +99,21 @@ export class Terminal {
     return line
   }
 
-  private key(label: string, action: () => void, disabled = false): HTMLElement {
+  private key(code: string, label: string, action: () => void): HTMLElement {
+    this.bindings.set(code, action)
     const button = document.createElement('button')
     button.type = 'button'
     button.className = 'term-key'
     button.textContent = label
-    button.disabled = disabled
-    if (!disabled) button.addEventListener('click', action)
+    button.addEventListener('click', () => {
+      this.onKeyPress?.(code)
+      action()
+    })
     return button
   }
 
   private render(): void {
+    this.bindings.clear()
     const transaction = this.transaction
 
     if (this.screen === 'idle' || !transaction) {
@@ -101,7 +124,7 @@ export class Terminal {
         this.row('WAIT FOR A MEMBER TO APPROACH,'),
         this.row('OR PRESS ESC TO STEP AWAY.', 'term-dim'),
       )
-      this.keys.replaceChildren(this.key('[ESC] STEP AWAY', () => { this.closed = true }))
+      this.keys.replaceChildren(this.key('Escape', '[ESC] STEP AWAY', () => { this.closed = true }))
       return
     }
 
@@ -116,11 +139,11 @@ export class Terminal {
         this.row(`${transaction.basket.length} ITEM(S) AT THE COUNTER.`, 'term-dim'),
       )
       this.keys.replaceChildren(
-        this.key('[F1] START RENTAL', () => {
+        this.key('F1', '[F1] START RENTAL', () => {
           this.screen = 'rental'
           this.render()
         }),
-        this.key('[ESC] STEP AWAY', () => { this.closed = true }),
+        this.key('Escape', '[ESC] STEP AWAY', () => { this.closed = true }),
       )
       return
     }
@@ -140,12 +163,12 @@ export class Terminal {
         this.row('DUE BACK BY 11:00 PM. BE KIND, REWIND.', 'term-dim'),
       )
       this.keys.replaceChildren(
-        this.key('[F3] COMPLETE SALE', () => {
+        this.key('F3', '[F3] COMPLETE SALE', () => {
           this.screen = 'done'
           this.completed = true
           this.render()
         }),
-        this.key('[ESC] STEP AWAY', () => { this.closed = true }),
+        this.key('Escape', '[ESC] STEP AWAY', () => { this.closed = true }),
       )
       return
     }
@@ -157,6 +180,6 @@ export class Terminal {
       this.row('RECEIPT PRINTED.'),
       this.row('THANK YOU FOR RENTING AT LACKLUSTER.', 'term-dim'),
     )
-    this.keys.replaceChildren(this.key('[ESC] CLOSE', () => { this.closed = true }))
+    this.keys.replaceChildren(this.key('Escape', '[ESC] CLOSE', () => { this.closed = true }))
   }
 }
