@@ -19,6 +19,13 @@ export const LOT_Y = -0.16
 /** In at the left, out at the right — the one-way flow every one of these stores had. */
 export const DOORS = { entranceX: -7, exitX: 7, halfWidth: 1.05 } as const
 
+/**
+ * Half-width of the solid middle bay of the front wall. Glazing runs from each side wall in to
+ * this, so the feature wall behind the counter is the building's own wall rather than a
+ * partition standing in front of windows.
+ */
+export const FRONT_SOLID_HALF = 4.9
+
 export const VHS = { width: 0.028, height: 0.19, depth: 0.11 } as const
 
 export function box(width: number, height: number, depth: number, color: number): THREE.Mesh {

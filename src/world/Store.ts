@@ -3,9 +3,10 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { createPS1Material } from '../render/ps1Material'
 import { boxArtTexture } from '../render/boxArt'
 import { lacklusterLogoTexture } from '../render/logoTexture'
+import { posterTexture, type PosterId } from '../render/posterTexture'
 import { BRAND, GENRE_COLOR, ROOM } from '../render/palette'
 import { CATALOG, newReleases, type Genre, type Title } from '../data/catalog'
-import { box, unlitBox, panel, place, DOORS, STORE, VHS } from './buildKit'
+import { box, unlitBox, panel, place, DOORS, FRONT_SOLID_HALF, STORE, VHS } from './buildKit'
 import { buildParkingLot, buildStorefront } from './exterior'
 
 export { STORE } from './buildKit'
@@ -36,10 +37,26 @@ const TIER_Y = [0.4, 0.86, 1.32] as const
  * otherwise there is no way to cross from the entrance to the exit without a detour.
  */
 const COUNTER = { halfWidth: 3.6, frontZ: 5.2, backZ: 6.4, height: 1.05, top: 1.08 } as const
-const FEATURE_WALL_Z = 7.5
+
+/**
+ * The feature wall *is* the building's front wall across the middle bay — glazing picks up
+ * again either side of it. A display wall standing in front of windows reads as a partition
+ * with daylight leaking round it; as the wall itself it reads as architecture.
+ */
+const FEATURE_WALL_Z = STORE.maxZ - 0.12
 
 /** Section colors for the non-film departments, kept out of the film genre palette. */
-const SECTION = { games: 0x6a3d9a, music: 0x1f7a6d, kids: 0xe07b39, bargain: 0xb03a3a } as const
+const SECTION = { games: 0x6a3d9a, music: 0x1f7a6d, bargain: 0xb03a3a } as const
+
+/**
+ * Runs are split in two with a cross aisle between them, and stop well short of both ends:
+ * a shelf that reaches the back wall leaves nowhere to stand and read the New Release rack,
+ * and one that reaches the counter closes off the only route between the two doors.
+ */
+const SHELF_SEGMENTS = [
+  { centerZ: -4.6, length: 4.4 },
+  { centerZ: 1.3, length: 3.4 },
+] as const
 
 interface Build {
   root: THREE.Group
@@ -85,6 +102,7 @@ export function buildStore(): BuiltStore {
   buildPerimeterShelving(build)
   buildNewReleaseWall(build)
   buildCounter(build)
+  buildPosters(build)
   buildProps(build)
 
   for (const [color, geometries] of itemsByColor) {
@@ -125,8 +143,9 @@ function buildShell({ root, colliders }: Build): void {
   wall(depth, STORE.minX, cz, Math.PI / 2)
   wall(depth, STORE.maxX, cz, -Math.PI / 2)
 
-  // The blue-over-yellow band running the top of every wall.
-  const stripeY = STORE.height - 0.55
+  // The blue-over-yellow band running the top of every wall, tucked up under the ceiling so
+  // the posters below it have room.
+  const stripeY = STORE.height - 0.18
   const stripe = (w: number, x: number, z: number, rotY: number): void => {
     const band = box(w, 0.34, 0.04, BRAND.blue)
     band.rotation.y = rotY
@@ -228,26 +247,28 @@ function buildRun(build: Build, options: RunOptions): void {
 }
 
 const FILM_AISLE_X = [-9.5, -6, -2.5, 1] as const
-const AISLE_CENTER_Z = -3
 
 function buildFilmAisles(build: Build): void {
   const genreOrder: Genre[] = ['action', 'comedy', 'scifi', 'horror', 'family', 'drama']
   const item: Item = { width: VHS.width, height: VHS.height, depth: VHS.depth, axis: 'z' }
 
   FILM_AISLE_X.forEach((x, index) => {
-    const left = genreOrder[(index * 2) % genreOrder.length] ?? 'action'
-    const right = genreOrder[(index * 2 + 1) % genreOrder.length] ?? 'comedy'
-    buildRun(build, {
-      x,
-      centerZ: AISLE_CENTER_Z,
-      length: GONDOLA.length,
-      height: GONDOLA.height,
-      tiers: TIER_Y,
-      item,
-      colors: [GENRE_COLOR[left], GENRE_COLOR[right]],
-      signColor: BRAND.blue,
-      label: 'Shelve a tape',
-      station: 'shelf',
+    SHELF_SEGMENTS.forEach((segment, segmentIndex) => {
+      const offset = index * 2 + segmentIndex * 4
+      const left = genreOrder[offset % genreOrder.length] ?? 'action'
+      const right = genreOrder[(offset + 1) % genreOrder.length] ?? 'comedy'
+      buildRun(build, {
+        x,
+        centerZ: segment.centerZ,
+        length: segment.length,
+        height: GONDOLA.height,
+        tiers: TIER_Y,
+        item,
+        colors: [GENRE_COLOR[left], GENRE_COLOR[right]],
+        signColor: BRAND.blue,
+        label: 'Shelve a tape',
+        station: 'shelf',
+      })
     })
   })
 
@@ -255,7 +276,7 @@ function buildFilmAisles(build: Build): void {
   const aisleLogo = lacklusterLogoTexture({ width: 128, height: 32, compact: true })
   for (const x of FILM_AISLE_X) {
     const marker = panel(1.5, 0.38, { map: aisleLogo, side: THREE.DoubleSide })
-    marker.position.set(x, 2.5, AISLE_CENTER_Z)
+    marker.position.set(x, 2.5, SHELF_SEGMENTS[0].centerZ)
     marker.rotation.y = Math.PI / 2
     build.root.add(marker)
   }
@@ -266,43 +287,32 @@ function buildFilmAisles(build: Build): void {
  * on low shelving, and the previously-viewed bin everybody dug through on the way out.
  */
 function buildSideSections(build: Build): void {
-  buildRun(build, {
-    x: 4.6,
-    centerZ: -3.5,
-    length: 8,
-    height: GONDOLA.height,
-    tiers: TIER_Y,
-    item: { width: 0.05, height: 0.21, depth: 0.14, axis: 'z' },
-    colors: [SECTION.games, SECTION.games],
-    signColor: SECTION.games,
-  })
+  for (const segment of SHELF_SEGMENTS) {
+    buildRun(build, {
+      x: 4.6,
+      centerZ: segment.centerZ,
+      length: segment.length,
+      height: GONDOLA.height,
+      tiers: TIER_Y,
+      item: { width: 0.05, height: 0.21, depth: 0.14, axis: 'z' },
+      colors: [SECTION.games, SECTION.games],
+      signColor: SECTION.games,
+    })
 
-  buildRun(build, {
-    x: 8,
-    centerZ: -3.5,
-    length: 8,
-    height: GONDOLA.height,
-    tiers: TIER_Y,
-    item: { width: 0.022, height: 0.14, depth: 0.14, axis: 'z' },
-    colors: [SECTION.music, SECTION.music],
-    signColor: SECTION.music,
-    gaps: 0.04,
-  })
+    buildRun(build, {
+      x: 8,
+      centerZ: segment.centerZ,
+      length: segment.length,
+      height: GONDOLA.height,
+      tiers: TIER_Y,
+      item: { width: 0.022, height: 0.14, depth: 0.14, axis: 'z' },
+      colors: [SECTION.music, SECTION.music],
+      signColor: SECTION.music,
+      gaps: 0.04,
+    })
+  }
 
-  // Kids shelving is low, so an adult can see over it and a child can reach the top row.
-  buildRun(build, {
-    x: 11,
-    centerZ: -3.5,
-    length: 8,
-    height: 1.05,
-    tiers: [0.4, 0.86],
-    item: { width: 0.032, height: 0.19, depth: 0.11, axis: 'z' },
-    colors: [SECTION.kids, SECTION.kids],
-    signColor: SECTION.kids,
-  })
-
-  buildBargainBin(build, 6.2, 2.2)
-  buildKidsTable(build, 10.6, 2.6)
+  buildBargainBin(build, 10.4, -1.6)
 }
 
 const BARGAIN_GENRES: readonly Genre[] = ['action', 'comedy', 'horror', 'scifi', 'family', 'drama']
@@ -328,39 +338,18 @@ function buildBargainBin({ root, colliders, addItem }: Build, x: number, z: numb
   place(root, sign, x, 1.15, z - 0.75)
 }
 
-/** The kids corner's activity table, low and round-ish, with a scatter of blocks on it. */
-function buildKidsTable({ root, colliders }: Build, x: number, z: number): void {
-  const top = box(1.3, 0.08, 1.3, SECTION.kids)
-  colliders.push(place(root, top, x, 0.5, z))
-
-  for (const [dx, dz] of [
-    [-0.5, -0.5],
-    [0.5, -0.5],
-    [-0.5, 0.5],
-    [0.5, 0.5],
-  ] as const) {
-    const leg = box(0.09, 0.5, 0.09, ROOM.shelfTrim)
-    place(root, leg, x + dx, 0.25, z + dz)
-  }
-
-  const blocks = [0xd0453a, 0x3f8f4a, 0x2f5aa8, 0xf5c518]
-  blocks.forEach((color, i) => {
-    const block = box(0.16, 0.16, 0.16, color)
-    place(root, block, x - 0.35 + i * 0.24, 0.62, z + (i % 2 === 0 ? -0.2 : 0.2))
-  })
-}
-
 /** Wall-hung stock down both side walls, which is where the overflow genres lived. */
 function buildPerimeterShelving({ root, addItem }: Build): void {
   const item: Item = { width: VHS.width, height: VHS.height, depth: VHS.depth, axis: 'z' }
-  const tiers = [0.55, 1.05, 1.55, 2.05]
+  // Three tiers, not four: the top row sat where the posters hang and buried them.
+  const tiers = [0.55, 1.05, 1.55]
 
   for (const [wallX, facing, colors] of [
     [STORE.minX + 0.3, 1, [GENRE_COLOR.drama, GENRE_COLOR.family]],
     [STORE.maxX - 0.3, -1, [GENRE_COLOR.horror, GENRE_COLOR.action]],
   ] as const) {
-    const backing = box(0.3, 2.4, 13, ROOM.shelfBody)
-    place(root, backing, wallX - facing * 0.15, 1.3, -2)
+    const backing = box(0.3, 1.9, 13, ROOM.shelfBody)
+    place(root, backing, wallX - facing * 0.15, 1.05, -2)
 
     tiers.forEach((y, tier) => {
       const board = box(0.34, 0.04, 13, ROOM.shelfTrim)
@@ -458,32 +447,32 @@ function buildCounter(build: Build): void {
   facePlate.rotation.y = Math.PI
   root.add(facePlate)
 
-  // --- Feature wall ---
-  const wallWidth = 9.4
-  const wallHeight = 2.5
-  place(root, box(wallWidth, wallHeight, 0.2, BRAND.blue), 0, wallHeight / 2, FEATURE_WALL_Z)
-  place(root, box(wallWidth + 0.2, 0.12, 0.26, BRAND.yellow), 0, wallHeight - 0.18, FEATURE_WALL_Z)
+  // --- Feature wall: the front wall across the middle bay, floor to ceiling ---
+  place(root, box(FRONT_SOLID_HALF * 2, STORE.height, 0.24, BRAND.blue), 0, STORE.height / 2, FEATURE_WALL_Z)
+  place(root, box(FRONT_SOLID_HALF * 2 + 0.1, 0.14, 0.3, BRAND.yellow), 0, 2.62, FEATURE_WALL_Z)
 
-  const featureLogo = panel(3.6, 1.58, { map: lacklusterLogoTexture() })
-  featureLogo.position.set(0, 1.78, FEATURE_WALL_Z - 0.11)
+  const face = FEATURE_WALL_Z - 0.13
+
+  const featureLogo = panel(4.2, 1.84, { map: lacklusterLogoTexture() })
+  featureLogo.position.set(0, 1.92, face)
   featureLogo.rotation.y = Math.PI
   root.add(featureLogo)
 
   // The real tapes, kept behind the counter — the empty cases on the floor are just the sleeves.
   const tape: Item = { width: 0.03, height: 0.2, depth: 0.12, axis: 'x' }
-  for (const y of [0.5, 0.82, 1.14]) {
-    place(root, box(7.4, 0.03, 0.2, ROOM.shelfTrim), 0, y - 0.12, FEATURE_WALL_Z - 0.16)
+  for (const y of [0.5, 0.82]) {
+    place(root, box(7.4, 0.03, 0.2, ROOM.shelfTrim), 0, y - 0.12, face - 0.04)
     for (let i = 0; i < 110; i += 1) {
       if (Math.random() < 0.05) continue
-      addItem(0x22262e, -3.6 + i * 0.066, y, FEATURE_WALL_Z - 0.16, tape)
+      addItem(0x22262e, -3.6 + i * 0.066, y, face - 0.04, tape)
     }
   }
 
   // Two monitors playing whatever corporate sent this month.
-  for (const x of [-3.9, 3.9] as const) {
-    place(root, box(0.9, 0.7, 0.55, 0x2b2b31), x, 1.75, FEATURE_WALL_Z - 0.2)
+  for (const x of [-3.6, 3.6] as const) {
+    place(root, box(0.9, 0.7, 0.5, 0x2b2b31), x, 1.6, face - 0.25)
     const screen = panel(0.66, 0.5, { color: 0x6f8fb8, unlit: true })
-    screen.position.set(x, 1.78, FEATURE_WALL_Z - 0.48)
+    screen.position.set(x, 1.62, face - 0.5)
     screen.rotation.y = Math.PI
     root.add(screen)
   }
@@ -506,6 +495,55 @@ function buildCounter(build: Build): void {
   interactables.push({ object: crate, label: 'Open the shipment crate', kind: 'station', station: 'restock' })
 }
 
+/**
+ * One-sheets in marquee frames. The bulbs are a single merged mesh per poster — a ring of
+ * thirty little unlit boxes is free that way, and individually it would not be.
+ */
+function buildPosters({ root }: Build): void {
+  const WIDTH = 0.68
+  const HEIGHT = 1.02
+
+  const hang = (id: PosterId, x: number, z: number, rotY: number): void => {
+    const group = new THREE.Group()
+
+    group.add(box(WIDTH + 0.22, HEIGHT + 0.22, 0.06, 0x14203f))
+    const art = panel(WIDTH, HEIGHT, { map: posterTexture(id) })
+    art.position.z = 0.05
+    group.add(art)
+
+    const bulbs: THREE.BufferGeometry[] = []
+    const addBulb = (bx: number, by: number): void => {
+      const bulb = new THREE.BoxGeometry(0.05, 0.05, 0.05)
+      bulb.translate(bx, by, 0.06)
+      bulbs.push(bulb)
+    }
+    const halfW = (WIDTH + 0.16) / 2
+    const halfH = (HEIGHT + 0.16) / 2
+    for (let i = 0; i < 7; i += 1) {
+      const t = -halfW + (i / 6) * halfW * 2
+      addBulb(t, halfH)
+      addBulb(t, -halfH)
+    }
+    for (let i = 1; i < 9; i += 1) {
+      const t = -halfH + (i / 9) * halfH * 2
+      addBulb(-halfW, t)
+      addBulb(halfW, t)
+    }
+    const merged = mergeGeometries(bulbs, false)
+    for (const geometry of bulbs) geometry.dispose()
+    if (merged) group.add(new THREE.Mesh(merged, createPS1Material({ color: 0xfff0b8, unlit: true })))
+
+    group.position.set(x, 2.5, z)
+    group.rotation.y = rotY
+    root.add(group)
+  }
+
+  hang('hard-to-perish', STORE.minX + 0.16, -5.4, Math.PI / 2)
+  hang('lizard-park', STORE.minX + 0.16, 0.4, Math.PI / 2)
+  hang('shriek', STORE.maxX - 0.16, -5.4, -Math.PI / 2)
+  hang('ogre-it', STORE.maxX - 0.16, 0.4, -Math.PI / 2)
+}
+
 /** The small stuff that makes a room look occupied rather than modelled. */
 function buildProps(build: Build): void {
   const { root, colliders, addItem } = build
@@ -515,15 +553,28 @@ function buildProps(build: Build): void {
   const candyX = 4.9
   const candyZ = 4.4
   colliders.push(place(root, box(1.8, 1.2, 0.5, ROOM.shelfBody), candyX, 0.6, candyZ))
-  const candy: Item = { width: 0.075, height: 0.13, depth: 0.09, axis: 'x' }
-  const candyColors = [0xd8232a, 0xf5c518, 0x8e44ad, 0x2e8b57, 0xe8731a]
-  for (const [row, y] of [0.5, 0.78, 1.06].entries()) {
-    place(root, box(1.8, 0.03, 0.52, ROOM.shelfTrim), candyX, y - 0.08, candyZ)
-    for (let i = 0; i < 22; i += 1) {
-      const color = candyColors[(i + row) % candyColors.length] ?? 0xd8232a
-      addItem(color, candyX - 0.8 + i * 0.076, y, candyZ - 0.1, candy)
+  // Three shelves, three shapes: theatre-size candy boxes up top, bagged sweets in the middle,
+  // microwave popcorn cartons along the bottom. Shape does the work that packaging would.
+  const SNACK_ROWS = [
+    { y: 1.06, item: { width: 0.07, height: 0.15, depth: 0.05, axis: 'x' } as Item, count: 23, step: 0.076 },
+    { y: 0.78, item: { width: 0.1, height: 0.13, depth: 0.07, axis: 'x' } as Item, count: 16, step: 0.108 },
+    { y: 0.5, item: { width: 0.14, height: 0.11, depth: 0.1, axis: 'x' } as Item, count: 12, step: 0.146 },
+  ] as const
+  const SNACK_COLORS = [
+    [0xd8232a, 0xf5c518, 0x8e44ad, 0x2e8b57, 0xe8731a],
+    [0x2f7fd0, 0xe4467a, 0x7ac143, 0xf5c518, 0xd8232a],
+    [0xe8c547, 0xd8232a, 0xefe4c8],
+  ] as const
+
+  SNACK_ROWS.forEach((row, index) => {
+    place(root, box(1.8, 0.03, 0.52, ROOM.shelfTrim), candyX, row.y - 0.09, candyZ)
+    const palette = SNACK_COLORS[index] ?? SNACK_COLORS[0]
+    const startX = candyX - (row.count * row.step) / 2
+    for (let i = 0; i < row.count; i += 1) {
+      const color = palette[(i * 3 + index) % palette.length] ?? 0xd8232a
+      addItem(color, startX + i * row.step, row.y, candyZ - 0.1, row.item)
     }
-  }
+  })
   place(root, box(1.9, 0.26, 0.06, BRAND.yellow), candyX, 1.35, candyZ - 0.24)
 
   // Drinks cooler: dark cabinet, lit glass door, rows of cans.
@@ -534,11 +585,22 @@ function buildProps(build: Build): void {
   coolerGlass.position.set(coolerX, 1.12, coolerZ - 0.36)
   coolerGlass.rotation.y = Math.PI
   root.add(coolerGlass)
-  const can: Item = { width: 0.07, height: 0.12, depth: 0.07, axis: 'x' }
-  const canColors = [0xd0453a, 0x2f5aa8, 0x3f8f4a]
-  for (const [row, y] of [0.6, 0.9, 1.2, 1.5].entries()) {
+  // Bottles up top where they fit, cans racked below — cola red, a blue, a citrus green, and
+  // the clear one nobody could explain then either.
+  const bottle: Item = { width: 0.085, height: 0.26, depth: 0.085, axis: 'x' }
+  const can: Item = { width: 0.07, height: 0.13, depth: 0.07, axis: 'x' }
+  const drinkColors = [0xd0453a, 0x2f5aa8, 0x6fbf3a, 0xe2e8ec, 0xe8871a]
+
+  for (const [row, y] of [1.52, 1.22].entries()) {
+    place(root, box(0.9, 0.02, 0.3, 0x3c424a), coolerX, y - 0.15, coolerZ - 0.2)
+    for (let i = 0; i < 9; i += 1) {
+      addItem(drinkColors[(i * 2 + row) % drinkColors.length] ?? 0xd0453a, coolerX - 0.34 + i * 0.086, y, coolerZ - 0.2, bottle)
+    }
+  }
+  for (const [row, y] of [0.88, 0.62].entries()) {
+    place(root, box(0.9, 0.02, 0.3, 0x3c424a), coolerX, y - 0.08, coolerZ - 0.2)
     for (let i = 0; i < 11; i += 1) {
-      addItem(canColors[(i + row) % canColors.length] ?? 0xd0453a, coolerX - 0.36 + i * 0.072, y, coolerZ - 0.2, can)
+      addItem(drinkColors[(i + row) % drinkColors.length] ?? 0xd0453a, coolerX - 0.36 + i * 0.072, y, coolerZ - 0.2, can)
     }
   }
 

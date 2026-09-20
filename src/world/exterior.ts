@@ -4,7 +4,7 @@ import { createPS1Material } from '../render/ps1Material'
 import { lacklusterLogoTexture } from '../render/logoTexture'
 import { duskSkyTexture } from '../render/skyTexture'
 import { BRAND } from '../render/palette'
-import { box, unlitBox, panel, makeFogless, DOORS, GLASS, LOT_Y, STORE } from './buildKit'
+import { box, unlitBox, panel, makeFogless, DOORS, FRONT_SOLID_HALF, GLASS, LOT_Y, STORE } from './buildKit'
 
 /**
  * Full-height shopfront glazing, with the entrance at the left and the exit at the right.
@@ -12,22 +12,14 @@ import { box, unlitBox, panel, makeFogless, DOORS, GLASS, LOT_Y, STORE } from '.
  * around the aisles, out past the counter.
  */
 export function buildStorefront(root: THREE.Group): void {
-  const width = STORE.maxX - STORE.minX
-  const cx = (STORE.minX + STORE.maxX) / 2
   const z = STORE.maxZ
   const doorXs = [DOORS.entranceX, DOORS.exitX]
 
-  const kick = box(width, GLASS.sillY, 0.18, BRAND.blue)
-  kick.position.set(cx, GLASS.sillY / 2, z)
-  root.add(kick)
-
-  const bulkhead = box(width, STORE.height - GLASS.headY, 0.18, BRAND.blue)
-  bulkhead.position.set(cx, (STORE.height + GLASS.headY) / 2, z)
-  root.add(bulkhead)
-
-  const bulkheadTrim = box(width, 0.1, 0.22, BRAND.yellow)
-  bulkheadTrim.position.set(cx, GLASS.headY + 0.1, z)
-  root.add(bulkheadTrim)
+  // Two glazed bays, one either side of the solid middle the feature wall occupies.
+  const bays = [
+    { from: STORE.minX, to: -FRONT_SOLID_HALF },
+    { from: FRONT_SOLID_HALF, to: STORE.maxX },
+  ] as const
 
   // Drawn last and without depth writes, so the lot reads through it.
   const glassMaterial = createPS1Material({
@@ -37,20 +29,43 @@ export function buildStorefront(root: THREE.Group): void {
     unlit: true,
   })
   glassMaterial.depthWrite = false
-  const glass = new THREE.Mesh(new THREE.PlaneGeometry(width, GLASS.headY - GLASS.sillY), glassMaterial)
-  glass.position.set(cx, (GLASS.sillY + GLASS.headY) / 2, z)
-  glass.renderOrder = 2
-  root.add(glass)
 
-  const nearDoor = (x: number): boolean =>
-    doorXs.some((doorX) => Math.abs(x - doorX) < DOORS.halfWidth + 0.3)
+  for (const bay of bays) {
+    const width = bay.to - bay.from
+    const center = (bay.from + bay.to) / 2
 
-  for (let x = STORE.minX; x <= STORE.maxX + 0.01; x += 2.4) {
-    if (nearDoor(x)) continue
-    const mullion = box(0.12, GLASS.headY - GLASS.sillY, 0.2, BRAND.blueDark)
-    mullion.position.set(x, (GLASS.sillY + GLASS.headY) / 2, z)
-    root.add(mullion)
+    const kick = box(width, GLASS.sillY, 0.18, BRAND.blue)
+    kick.position.set(center, GLASS.sillY / 2, z)
+    root.add(kick)
+
+    const bulkhead = box(width, STORE.height - GLASS.headY, 0.18, BRAND.blue)
+    bulkhead.position.set(center, (STORE.height + GLASS.headY) / 2, z)
+    root.add(bulkhead)
+
+    const bulkheadTrim = box(width, 0.1, 0.22, BRAND.yellow)
+    bulkheadTrim.position.set(center, GLASS.headY + 0.1, z)
+    root.add(bulkheadTrim)
+
+    const glass = new THREE.Mesh(new THREE.PlaneGeometry(width, GLASS.headY - GLASS.sillY), glassMaterial)
+    glass.position.set(center, (GLASS.sillY + GLASS.headY) / 2, z)
+    glass.renderOrder = 2
+    root.add(glass)
+
+    const nearDoor = (x: number): boolean =>
+      doorXs.some((doorX) => Math.abs(x - doorX) < DOORS.halfWidth + 0.3)
+
+    for (let x = bay.from; x <= bay.to + 0.01; x += 2.2) {
+      if (nearDoor(x)) continue
+      const mullion = box(0.12, GLASS.headY - GLASS.sillY, 0.2, BRAND.blueDark)
+      mullion.position.set(x, (GLASS.sillY + GLASS.headY) / 2, z)
+      root.add(mullion)
+    }
   }
+
+  // The street face of the solid bay: plain cladding, since the branding is all indoors of it.
+  const cladding = box(FRONT_SOLID_HALF * 2, STORE.height, 0.12, 0x8a8172)
+  cladding.position.set(0, STORE.height / 2, z + 0.06)
+  root.add(cladding)
 
   for (const doorX of doorXs) {
     for (const side of [-1, 1] as const) {
@@ -79,14 +94,10 @@ export function buildStorefront(root: THREE.Group): void {
     root.add(plate)
   }
 
-  // The pylon sign, readable from the aisle and from the lot.
-  const logo = lacklusterLogoTexture()
-  for (const facing of [-1, 1] as const) {
-    const sign = panel(4.2, 1.84, { map: logo, unlit: facing === 1 })
-    sign.position.set(0, STORE.height - 0.42, z - facing * 0.12)
-    if (facing === -1) sign.rotation.y = Math.PI
-    root.add(sign)
-  }
+  // Fascia sign, lit, facing the lot. Indoors the feature wall carries the mark instead.
+  const sign = panel(5, 2.19, { map: lacklusterLogoTexture(), unlit: true })
+  sign.position.set(0, STORE.height - 0.5, z + 0.14)
+  root.add(sign)
 }
 
 /** Dusk lot beyond the glass: enough to give the windows something to be windows onto. */

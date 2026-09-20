@@ -118,6 +118,11 @@ export class Input {
     return this.consumeKey('Escape')
   }
 
+  /** True once per press of M — silencing the store radio. */
+  consumeMuteToggle(): boolean {
+    return this.consumeKey('KeyM')
+  }
+
   private consumeKey(code: string): boolean {
     return this.queued.delete(code)
   }

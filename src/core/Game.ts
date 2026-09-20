@@ -9,6 +9,7 @@ import { ShiftClock } from './Clock'
 import { JobBoard } from '../sim/Tasks'
 import { Scorecard, VERDICT_COPY } from '../sim/Scorecard'
 import { Hud } from '../ui/hud'
+import { StoreRadio } from '../audio/StoreRadio'
 
 type Phase = 'title' | 'shift' | 'report'
 
@@ -27,6 +28,7 @@ export class Game {
   private readonly jobs = new JobBoard()
   private readonly scorecard = new Scorecard()
   private readonly hud = new Hud()
+  private readonly radio = new StoreRadio()
   private readonly raycaster = new THREE.Raycaster()
 
   private phase: Phase = 'title'
@@ -51,6 +53,7 @@ export class Game {
 
     this.raycaster.far = INTERACT_RANGE
     this.hud.onStart = () => this.startShift()
+    this.hud.onToggleSound = () => this.hud.setSoundMuted(this.radio.toggleMute())
     this.hud.showTitle()
 
     window.addEventListener('resize', () => this.onResize())
@@ -78,11 +81,14 @@ export class Game {
     this.phase = 'shift'
     this.hud.showShift()
     this.input.requestLock()
+    // Browsers only allow audio to start from a gesture, and clocking in is one.
+    this.radio.start()
   }
 
   private endShift(): void {
     this.phase = 'report'
     this.input.releaseLock()
+    this.radio.stop()
     const verdict = VERDICT_COPY[this.scorecard.verdict]
     this.hud.showReport(this.scorecard.report(), verdict.title, verdict.body)
   }
@@ -113,6 +119,8 @@ export class Game {
       const target = this.findTarget()
       this.hud.setPrompt(target ? target.label : null)
       this.hud.setInteractEnabled(target !== null)
+
+      if (this.input.consumeMuteToggle()) this.hud.setSoundMuted(this.radio.toggleMute())
 
       if (this.input.consumeInteract() && target) {
         if (target.kind === 'station') this.jobs.complete(target.station, this.scorecard)

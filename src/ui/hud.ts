@@ -39,7 +39,10 @@ export class Hud {
   /** A phone has no E key to press, so the prompt drops the key hint there. */
   private readonly promptPrefix = isTouchDevice() ? '' : '[E] '
 
+  private readonly soundButton = need('btn-sound')
+
   onStart: (() => void) | null = null
+  onToggleSound: (() => void) | null = null
 
   constructor() {
     need('btn-start').addEventListener('click', () => this.onStart?.())
@@ -47,6 +50,12 @@ export class Hud {
     need('btn-case-close').addEventListener('click', () => {
       this.caseWasDismissed = true
     })
+    this.soundButton.addEventListener('click', () => this.onToggleSound?.())
+  }
+
+  setSoundMuted(muted: boolean): void {
+    this.soundButton.textContent = muted ? 'Music off' : 'Music on'
+    this.soundButton.classList.toggle('muted', muted)
   }
 
   showTitle(): void {

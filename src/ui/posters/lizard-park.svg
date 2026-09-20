@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 192" width="128" height="192">
+  <defs>
+    <linearGradient id="lp-sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#05140f" />
+      <stop offset="0.5" stop-color="#0d3b2c" />
+      <stop offset="0.85" stop-color="#2f7a4a" />
+      <stop offset="1" stop-color="#6fb35c" />
+    </linearGradient>
+  </defs>
+
+  <rect width="128" height="192" fill="url(#lp-sky)" />
+
+  <!-- Storm sky and a pale moon -->
+  <circle cx="96" cy="28" r="13" fill="#cfe6c4" opacity="0.85" />
+  <rect x="0" y="22" width="128" height="4" fill="#07251b" opacity="0.7" />
+  <rect x="0" y="34" width="128" height="3" fill="#07251b" opacity="0.5" />
+
+  <!-- The gates: two posts and a lintel, standing open -->
+  <rect x="14" y="66" width="12" height="84" fill="#120d07" />
+  <rect x="102" y="66" width="12" height="84" fill="#120d07" />
+  <rect x="14" y="66" width="100" height="10" fill="#120d07" />
+  <rect x="30" y="84" width="6" height="66" fill="#1c1409" />
+  <rect x="92" y="84" width="6" height="66" fill="#1c1409" />
+
+  <!-- Flaming torches on the posts -->
+  <rect x="17" y="58" width="6" height="8" fill="#e8a23a" />
+  <rect x="105" y="58" width="6" height="8" fill="#e8a23a" />
+
+  <!-- The eye in the dark between the gates -->
+  <ellipse cx="64" cy="112" rx="15" ry="10" fill="#f0c234" />
+  <ellipse cx="64" cy="112" rx="4" ry="10" fill="#0a0d07" />
+
+  <!-- Teeth along the bottom of the dark -->
+  <g fill="#e8e0c8">
+    <polygon points="46,132 50,142 54,132" /><polygon points="56,132 60,144 64,132" />
+    <polygon points="66,132 70,144 74,132" /><polygon points="76,132 80,142 84,132" />
+  </g>
+
+  <rect x="0" y="150" width="128" height="42" fill="#050b07" />
+
+  <text x="64" y="168" text-anchor="middle" font-family="Georgia, serif"
+        font-size="19" font-weight="bold" fill="#e8dfae" letter-spacing="1">LIZARD</text>
+  <text x="64" y="184" text-anchor="middle" font-family="Georgia, serif"
+        font-size="19" font-weight="bold" fill="#e8dfae" letter-spacing="4">PARK</text>
+
+  <text x="64" y="146" text-anchor="middle" font-family="Helvetica, Arial, sans-serif"
+        font-size="5.5" fill="#bcd9ae" letter-spacing="1">THE GATES OPEN AT DAWN</text>
+</svg>

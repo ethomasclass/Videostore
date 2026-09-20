@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 192" width="128" height="192">
+  <defs>
+    <linearGradient id="hp-sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1a1005" />
+      <stop offset="0.55" stop-color="#6b2d05" />
+      <stop offset="0.8" stop-color="#d46a12" />
+      <stop offset="1" stop-color="#f2a93b" />
+    </linearGradient>
+  </defs>
+
+  <rect width="128" height="192" fill="url(#hp-sky)" />
+
+  <!-- The tower, with the floor that is on fire punched out of it -->
+  <rect x="44" y="18" width="40" height="132" fill="#120d09" />
+  <rect x="44" y="72" width="40" height="12" fill="#ffb03a" />
+  <rect x="44" y="72" width="40" height="4" fill="#fff0c0" />
+  <g fill="#3a2a18">
+    <rect x="49" y="26" width="5" height="7" /><rect x="59" y="26" width="5" height="7" />
+    <rect x="69" y="26" width="5" height="7" /><rect x="49" y="40" width="5" height="7" />
+    <rect x="69" y="40" width="5" height="7" /><rect x="59" y="54" width="5" height="7" />
+    <rect x="49" y="94" width="5" height="7" /><rect x="69" y="94" width="5" height="7" />
+    <rect x="59" y="108" width="5" height="7" /><rect x="49" y="122" width="5" height="7" />
+  </g>
+
+  <!-- Neighbouring blocks, flat black -->
+  <rect x="8" y="96" width="26" height="54" fill="#0d0a07" />
+  <rect x="94" y="84" width="26" height="66" fill="#0d0a07" />
+  <rect x="0" y="118" width="12" height="32" fill="#0d0a07" />
+
+  <!-- Lone figure on the ledge -->
+  <g fill="#0b0805">
+    <rect x="62" y="60" width="4" height="9" />
+    <rect x="61" y="57" width="6" height="4" />
+  </g>
+
+  <rect x="0" y="150" width="128" height="42" fill="#080604" />
+
+  <text x="64" y="167" text-anchor="middle" font-family="Helvetica, Arial, sans-serif"
+        font-size="17" font-weight="bold" font-style="italic" fill="#f5efe0">HARD TO</text>
+  <text x="64" y="182" text-anchor="middle" font-family="Helvetica, Arial, sans-serif"
+        font-size="17" font-weight="bold" font-style="italic" fill="#e2591f">PERISH</text>
+
+  <text x="64" y="146" text-anchor="middle" font-family="Helvetica, Arial, sans-serif"
+        font-size="6" fill="#f3d9a8" letter-spacing="1">HE ONLY CAME FOR THE PARTY</text>
+</svg>

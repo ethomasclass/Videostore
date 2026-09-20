@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 192" width="128" height="192">
+  <defs>
+    <radialGradient id="sk-glow" cx="0.5" cy="0.42" r="0.6">
+      <stop offset="0" stop-color="#4a4258" />
+      <stop offset="1" stop-color="#0b0a10" />
+    </radialGradient>
+  </defs>
+
+  <rect width="128" height="192" fill="url(#sk-glow)" />
+
+  <!-- The mask: a pale oval, hollowed -->
+  <ellipse cx="64" cy="76" rx="30" ry="40" fill="#e6e2d6" />
+  <ellipse cx="64" cy="82" rx="26" ry="36" fill="#cdc8ba" />
+  <ellipse cx="52" cy="66" rx="8" ry="12" fill="#0b0a10" />
+  <ellipse cx="76" cy="66" rx="8" ry="12" fill="#0b0a10" />
+  <ellipse cx="64" cy="98" rx="7" ry="14" fill="#0b0a10" />
+
+  <!-- Cowl -->
+  <path d="M30 74 Q30 24 64 24 Q98 24 98 74 L92 74 Q92 34 64 34 Q36 34 36 74 Z" fill="#12111a" />
+
+  <!-- The telephone cord, coiling down from the corner -->
+  <path d="M8 16 Q20 30 12 44 Q4 58 16 70 Q28 82 18 96"
+        stroke="#6f6a7d" stroke-width="2.5" fill="none" />
+  <rect x="4" y="8" width="16" height="9" rx="2" fill="#2a2733" />
+
+  <!-- Knife glint, lower right -->
+  <polygon points="104,120 118,104 121,108 108,124" fill="#d9d6cc" />
+  <polygon points="104,120 108,124 100,132 97,128" fill="#4b4855" />
+
+  <rect x="0" y="150" width="128" height="42" fill="#07060b" />
+
+  <text x="64" y="176" text-anchor="middle" font-family="Helvetica, Arial, sans-serif"
+        font-size="30" font-weight="bold" font-style="italic" fill="#d8d4c8">SHRIEK</text>
+
+  <text x="64" y="146" text-anchor="middle" font-family="Helvetica, Arial, sans-serif"
+        font-size="5.5" fill="#b0a9bf" letter-spacing="1">THE RULES ARE SIMPLE</text>
+  <text x="64" y="188" text-anchor="middle" font-family="Helvetica, Arial, sans-serif"
+        font-size="5" fill="#7a7488" letter-spacing="1">NOBODY FOLLOWS THEM</text>
+</svg>
