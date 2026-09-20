@@ -5,10 +5,11 @@ import { boxArtTexture } from '../render/boxArt'
 import { lacklusterLogoTexture } from '../render/logoTexture'
 import { posterTexture, type PosterId } from '../render/posterTexture'
 import { BRAND, GENRE_COLOR, ROOM } from '../render/palette'
-import { CATALOG, newReleases, type Genre, type Title } from '../data/catalog'
+import { signTexture } from '../render/signTexture'
+import { CATALOG, GENRE_LABEL, newReleases, type Genre, type Title } from '../data/catalog'
 import { box, unlitBox, hitbox, panel, place, DOORS, FRONT_SOLID_HALF, STORE, VHS } from './buildKit'
 import { buildParkingLot, buildStorefront } from './exterior'
-import { carpetTexture, lightPoolTexture } from '../render/carpetTexture'
+import { carpetTexture, lightPoolTexture, tileTexture } from '../render/carpetTexture'
 import { Rewinder } from './Rewinder'
 
 export { STORE } from './buildKit'
@@ -49,6 +50,9 @@ const COUNTER = { halfWidth: 3.6, frontZ: 5.2, backZ: 6.4, height: 1.05, top: 1.
  * with daylight leaking round it; as the wall itself it reads as architecture.
  */
 const FEATURE_WALL_Z = STORE.maxZ - 0.12
+
+/** Where carpet gives way to tile: the whole front-of-house runs on hard floor. */
+const TILE_LINE_Z = 3.4
 
 /** Section colors for the non-film departments, kept out of the film genre palette. */
 const SECTION = { games: 0x6a3d9a, music: 0x1f7a6d, bargain: 0xb03a3a } as const
@@ -134,15 +138,29 @@ function buildShell({ root, colliders }: Build): void {
   const cx = (STORE.minX + STORE.maxX) / 2
   const cz = (STORE.minZ + STORE.maxZ) / 2
 
-  // Tessellated on purpose. Affine texture error grows with polygon size, so the carpet on one
+  // Carpet through the shelving, hard tile across the front of the house where the counter is.
+  // Both tessellated on purpose: affine texture error grows with polygon size, so a floor on one
   // 24x18 quad smears into streaks; at roughly a metre per quad the warp is back to a shimmer.
-  const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(width, depth, width, depth),
-    createPS1Material({ map: carpetTexture(width, depth) }),
+  const carpetDepth = TILE_LINE_Z - STORE.minZ
+  const carpet = new THREE.Mesh(
+    new THREE.PlaneGeometry(width, carpetDepth, width, Math.round(carpetDepth)),
+    createPS1Material({ map: carpetTexture(width, carpetDepth) }),
   )
-  floor.rotation.x = -Math.PI / 2
-  floor.position.set(cx, 0, cz)
-  root.add(floor)
+  carpet.rotation.x = -Math.PI / 2
+  carpet.position.set(cx, 0, STORE.minZ + carpetDepth / 2)
+  root.add(carpet)
+
+  const tileDepth = STORE.maxZ - TILE_LINE_Z
+  const tiles = new THREE.Mesh(
+    new THREE.PlaneGeometry(width, tileDepth, width, Math.round(tileDepth)),
+    createPS1Material({ map: tileTexture(width * 1.5, tileDepth * 1.5) }),
+  )
+  tiles.rotation.x = -Math.PI / 2
+  tiles.position.set(cx, 0, TILE_LINE_Z + tileDepth / 2)
+  root.add(tiles)
+
+  // The metal edge strip where one meets the other.
+  place(root, box(width, 0.02, 0.09, 0x9a968a), cx, 0.012, TILE_LINE_Z)
 
   // Unlit: the ceiling faces away from every light in the room, so shading it correctly turns
   // the largest surface in the store black while real tile under fluorescents is the brightest.
@@ -177,6 +195,25 @@ function buildShell({ root, colliders }: Build): void {
   stripe(depth, STORE.minX + 0.05, cz, Math.PI / 2)
   stripe(depth, STORE.maxX - 0.05, cz, -Math.PI / 2)
 
+  // Department names printed into the band, which is how a customer navigates the room from
+  // the door. Unlit, because printed signage under fluorescents is the brightest thing on a
+  // wall and shading it sinks it into the mustard.
+  const wallSign = (text: string, x: number, z: number, rotY: number): void => {
+    const face = panel(3.2, 0.3, {
+      map: signTexture(text, { background: BRAND.blue, aspect: 3.2 / 0.3, rule: false }),
+      unlit: true,
+    })
+    face.position.set(x, stripeY, z)
+    face.rotation.y = rotY
+    root.add(face)
+  }
+  for (const [z, text] of [[-6, 'Drama'], [-1.4, 'Family'], [3.2, 'Comedy']] as const) {
+    wallSign(text, STORE.minX + 0.12, z, Math.PI / 2)
+  }
+  for (const [z, text] of [[-6, 'Horror'], [-1.4, 'Action & Adventure'], [3.2, 'Music & Games']] as const) {
+    wallSign(text, STORE.maxX - 0.12, z, -Math.PI / 2)
+  }
+
   const bound = 0.4
   colliders.push(
     new THREE.Box3(
@@ -200,21 +237,23 @@ function buildShell({ root, colliders }: Build): void {
   const troffer = createPS1Material({ color: ROOM.light, unlit: true })
   // Pools of light laid on the carpet under each fixture. The lighting model is per-vertex with
   // no falloff, so without these the floor takes one flat value and the troffers light nothing.
-  const poolMaterial = createPS1Material({ map: lightPoolTexture(), unlit: true, opacity: 0.34 })
+  const poolMaterial = createPS1Material({ map: lightPoolTexture(), unlit: true, opacity: 0.22 })
   poolMaterial.blending = THREE.AdditiveBlending
   poolMaterial.depthWrite = false
 
-  for (let i = 0; i < 5; i += 1) {
-    for (let j = 0; j < 3; j += 1) {
-      const x = -9.5 + i * 4.8
-      const z = -6 + j * 5
+  // A dense regular grid, which is what the reference rooms actually have — the ceiling is
+  // more light than tile, and that is why those stores read as bright rather than lit.
+  for (let i = 0; i < 6; i += 1) {
+    for (let j = 0; j < 4; j += 1) {
+      const x = -10 + i * 4
+      const z = -7 + j * 4.6
 
-      const lamp = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 0.9), troffer)
+      const lamp = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.8), troffer)
       lamp.rotation.x = Math.PI / 2
       lamp.position.set(x, STORE.height - 0.02, z)
       root.add(lamp)
 
-      const pool = new THREE.Mesh(new THREE.PlaneGeometry(7.2, 5.4, 6, 5), poolMaterial)
+      const pool = new THREE.Mesh(new THREE.PlaneGeometry(6.4, 5, 6, 5), poolMaterial)
       pool.rotation.x = -Math.PI / 2
       pool.position.set(x, 0.015, z)
       pool.renderOrder = 1
@@ -233,6 +272,8 @@ interface RunOptions {
   /** One color per side, so a run can carry two departments back to back. */
   colors: readonly [number, number]
   signColor: number
+  /** Section names printed on the header sign, one per side of the run. */
+  signText?: readonly [string, string]
   label?: string
   station?: StationKind
   /** Fraction of slots left empty, so shelves do not read as a solid painted block. */
@@ -265,8 +306,24 @@ function buildRun(build: Build, options: RunOptions): void {
     }
   }
 
-  const sign = box(0.05, 0.3, 2.2, signColor)
-  place(root, sign, x, height + 0.22, centerZ)
+  const signLength = Math.min(2.2, length - 0.4)
+  const sign = box(0.05, 0.34, signLength, signColor)
+  place(root, sign, x, height + 0.24, centerZ)
+
+  // The header reads from the aisle on either side, so it is two panels rather than one
+  // double-sided plane: a double-sided texture shows up mirrored from behind.
+  if (options.signText) {
+    for (const side of [-1, 1] as const) {
+      const text = options.signText[side === -1 ? 0 : 1]
+      const face = panel(signLength, 0.34, {
+        map: signTexture(text, { background: signColor, aspect: signLength / 0.34 }),
+        unlit: true,
+      })
+      face.position.set(x + side * 0.031, height + 0.24, centerZ)
+      face.rotation.y = side * (Math.PI / 2)
+      root.add(face)
+    }
+  }
 
   if (options.label && options.station) {
     const zone = hitbox(depth + 0.4, height, length)
@@ -296,6 +353,7 @@ function buildFilmAisles(build: Build): void {
         item,
         colors: [GENRE_COLOR[left], GENRE_COLOR[right]],
         signColor: BRAND.blue,
+        signText: [GENRE_LABEL[left], GENRE_LABEL[right]],
         label: 'Shelve a tape',
         station: 'shelf',
       })
@@ -303,12 +361,16 @@ function buildFilmAisles(build: Build): void {
   })
 
   // Aisle markers hung over each run, so the store brands itself from anywhere on the floor.
+  // Two single-sided panels back to back rather than one double-sided one: a double-sided
+  // plane shows the art mirrored from behind, so half the aisles read RETSULKCAL.
   const aisleLogo = lacklusterLogoTexture({ width: 128, height: 32, compact: true })
   for (const x of FILM_AISLE_X) {
-    const marker = panel(1.5, 0.38, { map: aisleLogo, side: THREE.DoubleSide })
-    marker.position.set(x, 2.5, SHELF_SEGMENTS[0].centerZ)
-    marker.rotation.y = Math.PI / 2
-    build.root.add(marker)
+    for (const side of [-1, 1] as const) {
+      const marker = panel(1.5, 0.38, { map: aisleLogo, unlit: true })
+      marker.position.set(x + side * 0.02, 2.5, SHELF_SEGMENTS[0].centerZ)
+      marker.rotation.y = side * (Math.PI / 2)
+      build.root.add(marker)
+    }
   }
 }
 
@@ -327,6 +389,7 @@ function buildSideSections(build: Build): void {
       item: { width: 0.05, height: 0.21, depth: 0.14, axis: 'z' },
       colors: [SECTION.games, SECTION.games],
       signColor: SECTION.games,
+      signText: ['Video Games', 'Video Games'],
     })
 
     buildRun(build, {
@@ -338,6 +401,7 @@ function buildSideSections(build: Build): void {
       item: { width: 0.022, height: 0.14, depth: 0.14, axis: 'z' },
       colors: [SECTION.music, SECTION.music],
       signColor: SECTION.music,
+      signText: ['Music', 'Music'],
       gaps: 0.04,
     })
   }
@@ -395,8 +459,15 @@ function buildBargainBin({ root, colliders, addItem }: Build, x: number, z: numb
     }
   }
 
-  const sign = box(1.4, 0.3, 0.06, SECTION.bargain)
+  const sign = box(1.4, 0.32, 0.06, SECTION.bargain)
   place(root, sign, x, 1.15, z - 0.75)
+  const signFace = panel(1.4, 0.32, {
+    map: signTexture('Previously Viewed', { background: SECTION.bargain, aspect: 1.4 / 0.32 }),
+    unlit: true,
+  })
+  signFace.position.set(x, 1.15, z - 0.79)
+  signFace.rotation.y = Math.PI
+  root.add(signFace)
 }
 
 /** Wall-hung stock down both side walls, which is where the overflow genres lived. */
@@ -478,6 +549,12 @@ function buildNewReleaseWall({ root, interactables }: Build): void {
   const centerX = RACK.startX + ((RACK.columns - 1) * RACK.spacingX) / 2
   const signWidth = RACK.columns * RACK.spacingX
   place(root, box(signWidth, 0.42, 0.08, BRAND.blue), centerX, 2.62, STORE.minZ + 0.1)
+  const releaseSign = panel(signWidth, 0.42, {
+    map: signTexture('New Releases', { background: BRAND.blue, aspect: signWidth / 0.42 }),
+    unlit: true,
+  })
+  releaseSign.position.set(centerX, 2.62, STORE.minZ + 0.15)
+  root.add(releaseSign)
   place(root, box(signWidth, 0.09, 0.1, BRAND.yellow), centerX, 2.38, STORE.minZ + 0.11)
 }
 
@@ -500,6 +577,12 @@ function buildCounter(build: Build): void {
   bar(halfWidth * 2, frontDepth, 0, frontZ)
   bar(0.9, wingLength, -halfWidth + 0.45, frontZ + wingLength / 2)
   bar(0.9, wingLength, halfWidth - 0.45, frontZ + wingLength / 2)
+
+  // Cabinetry on the staff side, which is the one warm surface in an otherwise blue object.
+  for (let i = 0; i < 7; i += 1) {
+    place(root, box(0.92, 0.72, 0.04, ROOM.counterCabinet), -3.1 + i * 1.03, 0.44, frontZ + frontDepth / 2 + 0.01)
+    place(root, box(0.86, 0.03, 0.05, 0x8d7a58), -3.1 + i * 1.03, 0.74, frontZ + frontDepth / 2 + 0.02)
+  }
 
   // Brand panel on the customer face of the front bar. Kept small: the feature wall carries a
   // full-size mark directly behind it, and two big ones at once just shout.

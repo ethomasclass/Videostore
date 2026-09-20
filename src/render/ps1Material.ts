@@ -111,7 +111,7 @@ const shared = {
   resolution: new THREE.Vector2(320, 240),
   lightDir: new THREE.Vector3(0.25, 1, 0.4).normalize(),
   lightColor: new THREE.Color(0xfff4e2),
-  ambient: new THREE.Color(0x7a8492),
+  ambient: new THREE.Color(0x8f98a6),
   /** Global scales for the era artifacts, driven by the fidelity setting. */
   affine: 1,
   jitter: 1,

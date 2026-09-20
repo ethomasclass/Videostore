@@ -8,6 +8,7 @@ import { ROOM } from './palette'
 const TILE = 64
 
 let carpet: THREE.CanvasTexture | null = null
+let tile: THREE.CanvasTexture | null = null
 let pool: THREE.CanvasTexture | null = null
 
 export function carpetTexture(repeatX: number, repeatZ: number): THREE.CanvasTexture {
@@ -24,7 +25,7 @@ export function carpetTexture(repeatX: number, repeatZ: number): THREE.CanvasTex
     // Two fleck colours, one lighter and one darker, scattered at single-pixel size.
     for (let i = 0; i < 900; i += 1) {
       const light = i % 3 !== 0
-      ctx.fillStyle = light ? 'rgba(150,168,190,0.30)' : 'rgba(18,26,40,0.38)'
+      ctx.fillStyle = light ? 'rgba(186,206,232,0.34)' : 'rgba(20,38,72,0.34)'
       ctx.fillRect(Math.floor(Math.random() * TILE), Math.floor(Math.random() * TILE), 1, 1)
     }
 
@@ -39,6 +40,40 @@ export function carpetTexture(repeatX: number, repeatZ: number): THREE.CanvasTex
   carpet.wrapT = THREE.RepeatWrapping
   carpet.repeat.set(repeatX, repeatZ)
   return carpet
+}
+
+/** Vinyl floor tile with a grout line, for the hard-floor strip across the front of the store. */
+export function tileTexture(repeatX: number, repeatZ: number): THREE.CanvasTexture {
+  if (!tile) {
+    const canvas = document.createElement('canvas')
+    canvas.width = TILE
+    canvas.height = TILE
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('2D canvas unavailable for tile')
+
+    ctx.fillStyle = `#${ROOM.tile.toString(16).padStart(6, '0')}`
+    ctx.fillRect(0, 0, TILE, TILE)
+
+    // Speckle, then the grout on two edges so the repeat forms a continuous grid.
+    for (let i = 0; i < 260; i += 1) {
+      ctx.fillStyle = i % 2 === 0 ? 'rgba(150,148,136,0.28)' : 'rgba(255,255,255,0.5)'
+      ctx.fillRect(Math.floor(Math.random() * TILE), Math.floor(Math.random() * TILE), 1, 1)
+    }
+    ctx.fillStyle = 'rgba(120,118,106,0.55)'
+    ctx.fillRect(0, 0, TILE, 2)
+    ctx.fillRect(0, 0, 2, TILE)
+
+    tile = new THREE.CanvasTexture(canvas)
+    tile.magFilter = THREE.NearestFilter
+    tile.minFilter = THREE.LinearFilter
+    tile.generateMipmaps = false
+    tile.colorSpace = THREE.SRGBColorSpace
+  }
+
+  tile.wrapS = THREE.RepeatWrapping
+  tile.wrapT = THREE.RepeatWrapping
+  tile.repeat.set(repeatX, repeatZ)
+  return tile
 }
 
 /**
@@ -77,7 +112,9 @@ export function lightPoolTexture(): THREE.CanvasTexture {
 
 export function disposeCarpetTextures(): void {
   carpet?.dispose()
+  tile?.dispose()
   pool?.dispose()
   carpet = null
+  tile = null
   pool = null
 }
