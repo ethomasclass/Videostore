@@ -37,16 +37,22 @@ export class Game {
     this.scene.add(this.store.root)
 
     this.player = new Player(this.renderer.aspect)
-    this.input = new Input(canvas)
+    this.input = new Input(canvas, this.hud.touchUi)
 
     this.raycaster.far = INTERACT_RANGE
     this.hud.onStart = () => this.startShift()
     this.hud.showTitle()
 
-    window.addEventListener('resize', () => this.renderer.resize())
+    window.addEventListener('resize', () => this.onResize())
+    window.addEventListener('orientationchange', () => this.onResize())
     canvas.addEventListener('click', () => {
       if (this.phase === 'shift') this.input.requestLock()
     })
+  }
+
+  private onResize(): void {
+    this.player.camera.aspect = this.renderer.resize()
+    this.player.camera.updateProjectionMatrix()
   }
 
   start(): void {
@@ -88,8 +94,9 @@ export class Game {
     this.jobs.update(dt, this.clock.progress, this.scorecard)
 
     const target = this.findTarget()
-    this.hud.setPrompt(target ? `[E] ${target.label}` : null)
-    if (target && this.input.wasPressed('KeyE')) {
+    this.hud.setPrompt(target ? target.label : null)
+    this.hud.setInteractEnabled(target !== null)
+    if (this.input.consumeInteract() && target) {
       this.jobs.complete(target.kind, this.scorecard)
     }
 

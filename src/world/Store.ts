@@ -59,7 +59,10 @@ export function buildStore(): BuiltStore {
   floor.position.set(cx, 0, cz)
   root.add(floor)
 
-  const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(width, depth), createPS1Material({ color: ROOM.ceiling }))
+  const ceiling = new THREE.Mesh(
+    new THREE.PlaneGeometry(width, depth),
+    createPS1Material({ color: ROOM.ceiling, unlit: true }),
+  )
   ceiling.rotation.x = Math.PI / 2
   ceiling.position.set(cx, STORE.height, cz)
   root.add(ceiling)
@@ -74,6 +77,21 @@ export function buildStore(): BuiltStore {
   wall(width, cx, STORE.minZ, 0) // back
   wall(depth, STORE.minX, cz, Math.PI / 2) // left
   wall(depth, STORE.maxX, cz, -Math.PI / 2) // right
+
+  // The blue-over-yellow band running the top of every wall. Cheap geometry, and it is the
+  // detail that makes the room read as branded retail rather than a plain yellow box.
+  const stripeY = STORE.height - 0.55
+  const stripe = (w: number, x: number, z: number, rotY: number): void => {
+    const band = box(w, 0.34, 0.04, BRAND.blue)
+    band.rotation.y = rotY
+    place(root, band, x, stripeY, z)
+    const accent = box(w, 0.1, 0.05, BRAND.yellow)
+    accent.rotation.y = rotY
+    place(root, accent, x, stripeY - 0.22, z)
+  }
+  stripe(width, cx, STORE.minZ + 0.05, 0)
+  stripe(depth, STORE.minX + 0.05, cz, Math.PI / 2)
+  stripe(depth, STORE.maxX - 0.05, cz, -Math.PI / 2)
 
   // Storefront glass: a dark pane so the room reads as interior-at-night.
   const glass = new THREE.Mesh(
@@ -180,30 +198,72 @@ export function buildStore(): BuiltStore {
     root.add(new THREE.Mesh(merged, createPS1Material({ color: GENRE_COLOR[genre] })))
   }
 
-  // --- New Release wall, front-facing box art along the back wall ---
+  // --- New Release wall ---
+  // Faced-out on angled wire racks, not flat against the wall: cases lean back on a lip, and
+  // every slot carries a paper tag. An empty slot keeps its tag, which is how "we're out of
+  // that one" reads from across the store.
   const releases = newReleases()
   const facingPool = releases.length >= 6 ? releases : [...releases, ...CATALOG.slice(0, 12)]
-  for (let i = 0; i < 18; i += 1) {
-    const title = facingPool[i % facingPool.length]
-    if (!title) continue
-    const rack = new THREE.Mesh(
-      new THREE.PlaneGeometry(VHS.depth * 1.5, VHS.height * 1.5),
-      createPS1Material({ map: boxArtTexture(title) }),
-    )
-    const column = i % 9
-    const row = Math.floor(i / 9)
-    rack.position.set(-9 + column * 1.15, 1.9 - row * 0.32, STORE.minZ + 0.06)
-    root.add(rack)
+  const FACING = { width: 0.26, height: 0.45, tilt: -0.28 }
+  // Spans the full width of the aisles, so the wall is the thing you see at the end of any of them.
+  const RACK = { columns: 26, rows: 3, startX: -8, spacingX: 0.42, topY: 2.05, spacingY: 0.52 }
+  const wallZ = STORE.minZ + 0.04
+
+  const tagGeometries: THREE.BufferGeometry[] = []
+  const hotTagGeometries: THREE.BufferGeometry[] = []
+
+  for (let row = 0; row < RACK.rows; row += 1) {
+    const y = RACK.topY - row * RACK.spacingY
+
+    // The wire shelf lip each row of cases rests on.
+    const rail = box(RACK.columns * RACK.spacingX, 0.03, 0.14, ROOM.shelfBody)
+    place(root, rail, RACK.startX + ((RACK.columns - 1) * RACK.spacingX) / 2, y - FACING.height / 2, wallZ + 0.07)
+
+    for (let column = 0; column < RACK.columns; column += 1) {
+      const x = RACK.startX + column * RACK.spacingX
+      const slot = row * RACK.columns + column
+
+      const tag = new THREE.PlaneGeometry(0.2, 0.05)
+      tag.translate(x, y - FACING.height / 2 - 0.06, wallZ + 0.02)
+      // Roughly every fifth slot is a yellow "just arrived" flag rather than a white tag.
+      if (slot % 5 === 2) hotTagGeometries.push(tag)
+      else tagGeometries.push(tag)
+
+      // Sold out: the tag stays, the case is gone.
+      if (slot % 8 === 3) continue
+
+      const title = facingPool[slot % facingPool.length]
+      if (!title) continue
+      const facing = new THREE.Mesh(
+        new THREE.PlaneGeometry(FACING.width, FACING.height),
+        createPS1Material({ map: boxArtTexture(title) }),
+      )
+      facing.rotation.x = FACING.tilt
+      facing.position.set(x, y, wallZ + 0.09)
+      root.add(facing)
+    }
   }
 
-  const newReleaseSign = box(9, 0.5, 0.08, BRAND.yellow)
-  place(root, newReleaseSign, -4.4, 2.45, STORE.minZ + 0.1)
+  const mergeInto = (geometries: THREE.BufferGeometry[], color: number): void => {
+    const merged = mergeGeometries(geometries, false)
+    for (const geometry of geometries) geometry.dispose()
+    if (merged) root.add(new THREE.Mesh(merged, createPS1Material({ color })))
+  }
+  mergeInto(tagGeometries, ROOM.tag)
+  mergeInto(hotTagGeometries, BRAND.yellow)
+
+  const signCenterX = RACK.startX + ((RACK.columns - 1) * RACK.spacingX) / 2
+  const signWidth = RACK.columns * RACK.spacingX
+  const newReleaseSign = box(signWidth, 0.42, 0.08, BRAND.blue)
+  place(root, newReleaseSign, signCenterX, 2.62, STORE.minZ + 0.1)
+  const newReleaseSignAccent = box(signWidth, 0.09, 0.1, BRAND.yellow)
+  place(root, newReleaseSignAccent, signCenterX, 2.38, STORE.minZ + 0.11)
 
   // --- Counter, right of the entrance, with the three stations of the job ---
   const counter = box(7, 1.05, 0.9, ROOM.counter)
   colliders.push(place(root, counter, 6, 0.525, 4.5))
 
-  const counterTop = box(7.1, 0.06, 1, ROOM.linoleum)
+  const counterTop = box(7.1, 0.06, 1, ROOM.counterTop)
   place(root, counterTop, 6, 1.08, 4.5)
 
   const register = box(0.5, 0.35, 0.4, 0x3a3a42)
@@ -222,9 +282,43 @@ export function buildStore(): BuiltStore {
   colliders.push(place(root, crate, 9.5, 0.25, 1.5))
   interactables.push({ object: crate, label: 'Open the shipment crate', kind: 'restock' })
 
+  // --- Shopping baskets by the door ---
+  // The yellow basket is the most recognizable loose prop in the whole store, so it is worth
+  // the five boxes it takes to build an open-topped one.
+  const basket = (x: number, y: number, z: number): void => {
+    const group = new THREE.Group()
+    const size = { w: 0.42, h: 0.22, d: 0.3 }
+    const shell = [
+      box(size.w, 0.02, size.d, BRAND.yellow),
+      box(size.w, size.h, 0.02, BRAND.yellow),
+      box(size.w, size.h, 0.02, BRAND.yellow),
+      box(0.02, size.h, size.d, BRAND.yellow),
+      box(0.02, size.h, size.d, BRAND.yellow),
+    ]
+    shell[0]?.position.set(0, -size.h / 2, 0)
+    shell[1]?.position.set(0, 0, -size.d / 2)
+    shell[2]?.position.set(0, 0, size.d / 2)
+    shell[3]?.position.set(-size.w / 2, 0, 0)
+    shell[4]?.position.set(size.w / 2, 0, 0)
+    for (const part of shell) if (part) group.add(part)
+
+    // The blue wordmark panel on the long side.
+    const label = box(size.w * 0.6, 0.09, 0.01, BRAND.blue)
+    label.position.set(0, 0.01, size.d / 2 + 0.01)
+    group.add(label)
+
+    group.position.set(x, y, z)
+    root.add(group)
+  }
+  basket(10.4, 0.12, 6.6)
+  basket(10.4, 0.35, 6.6)
+  basket(10.4, 0.58, 6.6)
+
   // --- Signage: the store's own name, backwards to you, facing the street ---
   const brandBar = box(6, 0.8, 0.1, BRAND.blue)
   place(root, brandBar, 0, 2.6, STORE.maxZ - 0.15)
+  const brandBarAccent = box(6.3, 0.16, 0.08, BRAND.yellow)
+  place(root, brandBarAccent, 0, 2.6, STORE.maxZ - 0.2)
 
   return { root, colliders, interactables }
 }

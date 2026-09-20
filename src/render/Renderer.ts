@@ -1,9 +1,14 @@
 import * as THREE from 'three'
 import { setPS1Resolution } from './ps1Material'
 
-/** Internal framebuffer. Everything renders here, then gets point-sampled up to the window. */
-const INTERNAL_WIDTH = 320
+/**
+ * Internal framebuffer. Everything renders here, then gets point-sampled up to the window.
+ * Height is fixed so the pixels stay a constant size; width follows the window's aspect so a
+ * phone in either orientation fills the screen without stretching the image.
+ */
 const INTERNAL_HEIGHT = 240
+const MIN_INTERNAL_WIDTH = 200
+const MAX_INTERNAL_WIDTH = 560
 
 const postVertex = /* glsl */ `
   varying vec2 vUv;
@@ -52,12 +57,13 @@ export class Renderer {
   private readonly postScene: THREE.Scene
   private readonly postCamera: THREE.Camera
   private readonly postMaterial: THREE.ShaderMaterial
+  private internalWidth = 320
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' })
     this.renderer.setPixelRatio(1)
 
-    this.target = new THREE.WebGLRenderTarget(INTERNAL_WIDTH, INTERNAL_HEIGHT, {
+    this.target = new THREE.WebGLRenderTarget(this.internalWidth, INTERNAL_HEIGHT, {
       minFilter: THREE.NearestFilter,
       magFilter: THREE.NearestFilter,
       depthBuffer: true,
@@ -71,7 +77,7 @@ export class Renderer {
       depthWrite: false,
       uniforms: {
         uScene: { value: this.target.texture },
-        uInternal: { value: new THREE.Vector2(INTERNAL_WIDTH, INTERNAL_HEIGHT) },
+        uInternal: { value: new THREE.Vector2(this.internalWidth, INTERNAL_HEIGHT) },
       },
     })
 
@@ -79,17 +85,27 @@ export class Renderer {
     this.postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.postMaterial))
     this.postCamera = new THREE.Camera()
 
-    setPS1Resolution(INTERNAL_WIDTH, INTERNAL_HEIGHT)
     this.resize()
   }
 
-  /** Internal resolution is fixed; only the presented size follows the window. */
-  resize(): void {
+  /** Returns the new aspect so the caller can keep its camera in step. */
+  resize(): number {
     this.renderer.setSize(window.innerWidth, window.innerHeight, false)
+
+    const windowAspect = window.innerWidth / Math.max(window.innerHeight, 1)
+    this.internalWidth = Math.round(
+      THREE.MathUtils.clamp(INTERNAL_HEIGHT * windowAspect, MIN_INTERNAL_WIDTH, MAX_INTERNAL_WIDTH),
+    )
+
+    this.target.setSize(this.internalWidth, INTERNAL_HEIGHT)
+    this.postMaterial.uniforms.uInternal?.value.set(this.internalWidth, INTERNAL_HEIGHT)
+    setPS1Resolution(this.internalWidth, INTERNAL_HEIGHT)
+
+    return this.aspect
   }
 
   get aspect(): number {
-    return INTERNAL_WIDTH / INTERNAL_HEIGHT
+    return this.internalWidth / INTERNAL_HEIGHT
   }
 
   render(scene: THREE.Scene, camera: THREE.Camera): void {

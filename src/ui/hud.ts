@@ -1,5 +1,7 @@
 import type { Job } from '../sim/Tasks'
 import type { ReportLine } from '../sim/Scorecard'
+import type { TouchUiElements } from '../core/Input'
+import { isTouchDevice } from '../core/TouchControls'
 
 const need = <T extends HTMLElement>(id: string): T => {
   const element = document.getElementById(id)
@@ -16,6 +18,18 @@ export class Hud {
   private readonly reportScreen = need('screen-report')
   private readonly reportLines = need('report-lines')
   private readonly reportVerdict = need('report-verdict')
+  private readonly interactButton = need('btn-interact')
+
+  readonly touchUi: TouchUiElements = {
+    root: need('touch-ui'),
+    surface: need('touch-surface'),
+    stick: need('touch-stick'),
+    knob: need('touch-knob'),
+    interact: this.interactButton,
+  }
+
+  /** A phone has no E key to press, so the prompt drops the key hint there. */
+  private readonly promptPrefix = isTouchDevice() ? '' : '[E] '
 
   onStart: (() => void) | null = null
 
@@ -28,12 +42,14 @@ export class Hud {
     this.titleScreen.hidden = false
     this.reportScreen.hidden = true
     this.hud.hidden = true
+    this.touchUi.root.classList.remove('in-shift')
   }
 
   showShift(): void {
     this.titleScreen.hidden = true
     this.reportScreen.hidden = true
     this.hud.hidden = false
+    this.touchUi.root.classList.add('in-shift')
   }
 
   setClock(text: string): void {
@@ -42,7 +58,12 @@ export class Hud {
 
   setPrompt(text: string | null): void {
     this.prompt.hidden = text === null
-    this.prompt.textContent = text ?? ''
+    this.prompt.textContent = text === null ? '' : `${this.promptPrefix}${text}`
+  }
+
+  /** Dims the on-screen interact button when nothing is in range to act on. */
+  setInteractEnabled(enabled: boolean): void {
+    this.interactButton.classList.toggle('enabled', enabled)
   }
 
   setJobs(jobs: readonly Job[]): void {
@@ -63,6 +84,7 @@ export class Hud {
     this.hud.hidden = true
     this.titleScreen.hidden = true
     this.reportScreen.hidden = false
+    this.touchUi.root.classList.remove('in-shift')
 
     this.reportLines.replaceChildren(
       ...lines.map((line) => {

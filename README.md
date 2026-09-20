@@ -13,6 +13,11 @@ npm run build
 
 Click the canvas to capture the mouse. `WASD` move, `Shift` run, `E` interact, `Esc` release.
 
+On a touch device the same controls appear as a floating thumbstick on the left half of the
+screen, drag-to-look on the right half, and an on-screen interact button. Landscape is the better
+orientation — the internal buffer keeps a fixed height and follows the window's aspect, so
+portrait is playable but narrow.
+
 ## Design pillars
 
 **One shift is the whole game.** No campaign, no store economy, no staff scheduling. The hour

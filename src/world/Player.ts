@@ -33,17 +33,18 @@ export class Player {
     this.yaw += look.yaw * LOOK_SENSITIVITY
     this.pitch = THREE.MathUtils.clamp(this.pitch + look.pitch * LOOK_SENSITIVITY, -PITCH_LIMIT, PITCH_LIMIT)
 
-    const forward = (input.isDown('KeyW') ? 1 : 0) - (input.isDown('KeyS') ? 1 : 0)
-    const strafe = (input.isDown('KeyD') ? 1 : 0) - (input.isDown('KeyA') ? 1 : 0)
+    const { forward, strafe } = input.movement
 
     const wish = new THREE.Vector3(
       Math.sin(this.yaw) * -forward + Math.cos(this.yaw) * strafe,
       0,
       Math.cos(this.yaw) * -forward - Math.sin(this.yaw) * strafe,
     )
-    if (wish.lengthSq() > 0) wish.normalize()
+    // A thumbstick gives partial deflection, so clamp rather than normalize — pushing the stick
+    // halfway should walk at half speed instead of snapping to full.
+    if (wish.lengthSq() > 1) wish.normalize()
 
-    const speed = input.isDown('ShiftLeft') || input.isDown('ShiftRight') ? RUN_SPEED : WALK_SPEED
+    const speed = input.isRunning ? RUN_SPEED : WALK_SPEED
     this.velocity.lerp(wish.multiplyScalar(speed), Math.min(1, ACCEL * dt))
 
     this.moveAxis('x', this.velocity.x * dt, colliders)

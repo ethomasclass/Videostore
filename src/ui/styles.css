@@ -19,14 +19,21 @@ body {
   background: var(--ink);
   color: var(--paper);
   font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  /* Stop the browser treating drags as scroll/zoom gestures while playing. */
+  touch-action: none;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 #viewport {
   display: block;
   width: 100vw;
-  height: 100vh;
-  /* The internal buffer is 320x240; keep the upscale hard-edged. */
+  height: 100dvh;
+  /* Point-sampled upscale from the low-res internal buffer. */
   image-rendering: pixelated;
+  touch-action: none;
 }
 
 #ui {
@@ -103,6 +110,81 @@ body {
   border: 1px solid rgba(239, 233, 216, 0.4);
   font-size: 14px;
   white-space: nowrap;
+}
+
+/* --- Touch controls --- */
+
+#touch-ui[hidden] {
+  display: none;
+}
+
+/* The drag surface only listens once a shift is running, so it never eats title-screen taps. */
+#touch-surface {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  touch-action: none;
+}
+
+#touch-ui.in-shift #touch-surface {
+  pointer-events: auto;
+}
+
+#touch-stick {
+  position: absolute;
+  width: 116px;
+  height: 116px;
+  margin: -58px 0 0 -58px;
+  border: 2px solid rgba(239, 233, 216, 0.35);
+  border-radius: 50%;
+  background: rgba(11, 14, 22, 0.35);
+  opacity: 0;
+  transition: opacity 0.12s ease-out;
+  pointer-events: none;
+}
+
+#touch-stick.active {
+  opacity: 1;
+}
+
+#touch-knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(245, 197, 24, 0.75);
+  transform: translate(-50%, -50%);
+}
+
+#btn-interact {
+  position: absolute;
+  right: max(28px, env(safe-area-inset-right));
+  bottom: max(36px, env(safe-area-inset-bottom));
+  display: none;
+  width: 84px;
+  height: 84px;
+  margin: 0;
+  padding: 0;
+  border: 2px solid rgba(239, 233, 216, 0.5);
+  border-radius: 50%;
+  background: rgba(11, 14, 22, 0.5);
+  color: rgba(239, 233, 216, 0.5);
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 0;
+  touch-action: none;
+}
+
+#touch-ui.in-shift #btn-interact {
+  display: block;
+}
+
+#btn-interact.enabled {
+  border-color: var(--brand-yellow);
+  background: rgba(245, 197, 24, 0.9);
+  color: var(--ink);
 }
 
 /* --- Full-screen states --- */
@@ -193,6 +275,21 @@ button:hover {
   list-style: none;
   color: rgba(239, 233, 216, 0.55);
   font-size: 12px;
+}
+
+/* Show whichever control legend matches the device. */
+#controls-touch {
+  display: none;
+}
+
+@media (pointer: coarse) {
+  #controls-desktop {
+    display: none;
+  }
+
+  #controls-touch {
+    display: flex;
+  }
 }
 
 kbd {

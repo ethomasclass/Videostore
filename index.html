@@ -2,7 +2,12 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" content="#0b0e16" />
     <title>Lackluster Video</title>
   </head>
   <body>
@@ -16,16 +21,27 @@
         <div id="hud-prompt" hidden></div>
       </div>
 
+      <div id="touch-ui" hidden>
+        <div id="touch-surface"></div>
+        <div id="touch-stick"><div id="touch-knob"></div></div>
+        <button id="btn-interact" type="button">E</button>
+      </div>
+
       <section id="screen-title" class="screen">
         <p class="kicker">Be Kind, Rewind</p>
         <h1>Lackluster<span>Video</span></h1>
         <p class="tagline">One shift. Closing time. Don't get written up.</p>
         <button id="btn-start" type="button">Clock In</button>
-        <ul class="controls">
+        <ul class="controls" id="controls-desktop">
           <li><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move</li>
           <li><kbd>Mouse</kbd> look</li>
           <li><kbd>E</kbd> interact</li>
           <li><kbd>Esc</kbd> release cursor</li>
+        </ul>
+        <ul class="controls" id="controls-touch">
+          <li>Left thumb to move</li>
+          <li>Right thumb to look</li>
+          <li><b>E</b> button to interact</li>
         </ul>
       </section>
 
